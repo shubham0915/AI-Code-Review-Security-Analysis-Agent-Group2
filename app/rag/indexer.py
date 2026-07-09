@@ -22,6 +22,7 @@ def get_llama_embeddings():
     settings = get_settings()
     if settings.using_gemini:
         try:
+            # pyrefly: ignore [missing-import]
             from llama_index.embeddings.langchain import LangchainEmbedding
             from app.llm.factory import get_embeddings
             logger.info("Using LangchainEmbedding wrapper for Gemini embeddings in LlamaIndex")
@@ -40,6 +41,7 @@ def get_llama_llm():
     settings = get_settings()
     if settings.using_gemini:
         try:
+            # pyrefly: ignore [missing-import]
             from llama_index.llms.gemini import Gemini
             logger.info("Using LlamaIndex Gemini LLM")
             return Gemini(model=settings.gemini_primary_model, api_key=settings.gemini_api_key)

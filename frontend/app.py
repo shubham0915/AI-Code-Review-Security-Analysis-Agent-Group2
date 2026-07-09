@@ -17,7 +17,7 @@ import uuid
 import ast
 from datetime import datetime
 from typing import Optional
-
+# pyrefly: ignore [missing-import]
 import streamlit as st
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -196,6 +196,7 @@ if "api_mode" not in st.session_state:
 # ─────────────────────────────────────────────────────────────────────────────
 def check_api() -> bool:
     try:
+        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.get(f"{API_BASE}/health", timeout=2)
         return r.status_code == 200
@@ -205,6 +206,7 @@ def check_api() -> bool:
 
 def api_validate(code: str, language: str) -> dict:
     try:
+        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.post(f"{API_BASE}/api/v1/submit/validate",
                        json={"code": code, "language": language}, timeout=10)
@@ -215,6 +217,7 @@ def api_validate(code: str, language: str) -> dict:
 
 def api_submit_paste(code: str, language: str, filename: str = "") -> dict:
     try:
+        # pyrefly: ignore [missing-import]
         import httpx
         payload = {"code": code, "language": language}
         if filename:
@@ -227,6 +230,7 @@ def api_submit_paste(code: str, language: str, filename: str = "") -> dict:
 
 def api_submit_file(file_bytes: bytes, filename: str, language: str) -> dict:
     try:
+        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.post(
             f"{API_BASE}/api/v1/submit/file",
@@ -241,6 +245,7 @@ def api_submit_file(file_bytes: bytes, filename: str, language: str) -> dict:
 
 def api_status(session_id: str) -> dict:
     try:
+        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.get(f"{API_BASE}/api/v1/status/{session_id}", timeout=5)
         return r.json()
@@ -253,6 +258,7 @@ def api_status(session_id: str) -> dict:
 
 def api_rag_query(question: str) -> dict:
     try:
+        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.post(f"{API_BASE}/api/v1/rag/query", json={"question": question, "top_k": 3}, timeout=120)
         return r.json()
@@ -426,6 +432,7 @@ with tab_paste:
     # Code editor — try streamlit-ace, fallback to text_area
     editor_lang = "python" if language_choice in ["python", "auto"] else "java"
     try:
+        # pyrefly: ignore [missing-import]
         from streamlit_ace import st_ace
         code_input = st_ace(
             placeholder="# Paste your Python or Java code here...\n\ndef example():\n    user_id = input('Enter ID: ')\n    query = f'SELECT * FROM users WHERE id={user_id}'  # SQL injection!",
@@ -699,6 +706,7 @@ with tab_history:
                         # Only show "View Full Report" button
                         if st.button(f"📄 View Full Report", key=f"report_{i}"):
                             try:
+                                # pyrefly: ignore [missing-import]
                                 import httpx
                                 res = httpx.get(f"{API_BASE}/api/v1/result/{sid}", timeout=5).json()
                                 st.markdown("##### Analysis Result")
@@ -732,6 +740,7 @@ with tab_history:
         with col_lu2:
             if st.button("📄 View Full Report", key="lookup_report_btn"):
                 try:
+                    # pyrefly: ignore [missing-import]
                     import httpx
                     res = httpx.get(f"{API_BASE}/api/v1/result/{manual_sid.strip()}", timeout=5).json()
                     st.markdown("##### Analysis Result")

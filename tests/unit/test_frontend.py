@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+# pyrefly: ignore [missing-import]
 from streamlit.testing.v1 import AppTest
 
 # Add project root to path

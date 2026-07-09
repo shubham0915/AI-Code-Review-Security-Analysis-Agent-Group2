@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+# pyrefly: ignore [missing-import]
 from loguru import logger
 
 from app.celery_app import celery_app
@@ -31,6 +32,7 @@ def run_full_analysis(self, session_id: str) -> dict:
       4. Sequential: PR Summary Agent
       5. Store result in Redis, update session status
     """
+    # pyrefly: ignore [missing-import]
     import redis as sync_redis
     from app.config import get_settings
 

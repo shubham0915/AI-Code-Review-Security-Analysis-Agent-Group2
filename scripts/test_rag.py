@@ -9,6 +9,7 @@ It retrieves relevant chunks from ChromaDB and uses Ollama to generate an answer
 import sys
 import time
 from pathlib import Path
+# pyrefly: ignore [missing-import]
 from loguru import logger
 
 # Add root directory to path to load settings and indexer

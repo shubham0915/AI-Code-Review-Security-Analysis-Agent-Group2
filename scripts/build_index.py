@@ -9,6 +9,7 @@ chunks them, embeds them, and saves the vector store locally in ChromaDB.
 import sys
 import time
 from pathlib import Path
+# pyrefly: ignore [missing-import]
 from loguru import logger
 
 # Add root directory to path to load settings and indexer

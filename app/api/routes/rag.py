@@ -5,8 +5,11 @@ POST /api/v1/rag/query
 """
 from __future__ import annotations
 
+# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, HTTPException
+# pyrefly: ignore [missing-import]
 from pydantic import BaseModel
+# pyrefly: ignore [missing-import]
 from loguru import logger
 
 from app.rag.indexer import build_or_load_index

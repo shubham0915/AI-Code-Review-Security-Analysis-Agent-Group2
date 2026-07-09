@@ -7,12 +7,17 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
-
+# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, Request
+# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
+# pyrefly: ignore [missing-import]
 from fastapi.responses import JSONResponse
+# pyrefly: ignore [missing-import]
 from loguru import logger
+# pyrefly: ignore [missing-import]
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+# pyrefly: ignore [missing-import]
 from starlette.responses import Response
 
 from app.config import get_settings
@@ -21,6 +26,7 @@ from app.cache.redis_cache import close_redis
 
 settings = get_settings()
 
+# pyrefly: ignore [missing-import]
 from prometheus_client import REGISTRY
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -159,6 +165,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 # Dev run entry point
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # pyrefly: ignore [missing-import]
     import uvicorn
     uvicorn.run(
         "app.main:app",
