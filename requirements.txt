@@ -16,17 +16,17 @@ redis==5.0.6
 kombu==5.3.7
 
 # ── RAG Framework ────────────────────────────
-llama-index==0.10.52
-llama-index-vector-stores-chroma==0.1.10
-llama-index-embeddings-ollama==0.1.5
-llama-index-llms-ollama==0.1.5
-chromadb==0.5.3
+llama-index>=0.10.52
+llama-index-vector-stores-chroma>=0.1.10
+llama-index-embeddings-ollama>=0.1.5
+llama-index-llms-ollama>=0.1.5
+chromadb>=0.5.3
 
 # ── LangChain / LangGraph ────────────────────
-langchain==0.2.9
-langchain-community==0.2.9
-langchain-core==0.2.20
-langgraph==0.1.17
+langchain>=0.2.9
+langchain-community>=0.2.9
+langchain-core>=0.2.20
+langgraph>=0.1.17
 
 # ── Embeddings & Retrieval ───────────────────
 sentence-transformers==3.0.1
@@ -34,7 +34,7 @@ rank-bm25==0.2.2
 # cross-encoder re-ranker (bundled in sentence-transformers)
 
 # ── Ollama Python Client ─────────────────────
-ollama==0.2.1
+ollama>=0.2.1
 
 # ── Static Analysis – Python ─────────────────
 bandit==1.7.9
@@ -44,7 +44,7 @@ semgrep==1.77.0
 
 # ── Language Detection ───────────────────────
 pygments==2.18.0
-guesslang==2.2.1
+# guesslang==2.2.1  # Removed due to incompatible old TensorFlow dependency on Python 3.11+
 
 # ── Report Generation ────────────────────────
 weasyprint==62.3

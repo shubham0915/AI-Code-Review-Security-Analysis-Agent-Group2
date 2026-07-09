@@ -16,29 +16,42 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 from starlette.responses import Response
 
 from app.config import get_settings
-from app.api.routes import health, submit, status, result
+from app.api.routes import health, submit, status, result, rag
 from app.cache.redis_cache import close_redis
 
 settings = get_settings()
 
+from prometheus_client import REGISTRY
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Prometheus metrics
 # ─────────────────────────────────────────────────────────────────────────────
-REQUEST_COUNT = Counter(
-    "http_requests_total",
-    "Total HTTP requests",
-    ["method", "endpoint", "status_code"],
-)
-REQUEST_LATENCY = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request latency",
-    ["method", "endpoint"],
-)
-SUBMISSION_COUNT = Counter(
-    "code_submissions_total",
-    "Total code submissions",
-    ["language", "source"],
-)
+if "http_requests_total" in REGISTRY._names_to_collectors:
+    REQUEST_COUNT = REGISTRY._names_to_collectors["http_requests_total"]
+else:
+    REQUEST_COUNT = Counter(
+        "http_requests_total",
+        "Total HTTP requests",
+        ["method", "endpoint", "status_code"],
+    )
+
+if "http_request_duration_seconds" in REGISTRY._names_to_collectors:
+    REQUEST_LATENCY = REGISTRY._names_to_collectors["http_request_duration_seconds"]
+else:
+    REQUEST_LATENCY = Histogram(
+        "http_request_duration_seconds",
+        "HTTP request latency",
+        ["method", "endpoint"],
+    )
+
+if "code_submissions_total" in REGISTRY._names_to_collectors:
+    SUBMISSION_COUNT = REGISTRY._names_to_collectors["code_submissions_total"]
+else:
+    SUBMISSION_COUNT = Counter(
+        "code_submissions_total",
+        "Total code submissions",
+        ["language", "source"],
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +133,15 @@ app.include_router(health.router)
 app.include_router(submit.router)
 app.include_router(status.router)
 app.include_router(result.router)
+app.include_router(rag.router)
 
+@app.get("/", include_in_schema=False)
+async def root():
+    return {
+        "name": "AI Code Review & Security Analysis Agent API",
+        "docs": "/docs",
+        "health": "/health/ready"
+    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Global exception handler

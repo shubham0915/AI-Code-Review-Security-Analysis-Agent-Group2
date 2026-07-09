@@ -21,7 +21,19 @@ class Settings(BaseSettings):
     app_secret_key: str = "dev-secret-key-change-in-production"
     log_level: str = "INFO"
 
-    # Ollama
+    # ── LLM Provider toggle ──────────────────────────────────────
+    # "gemini" → uses Gemini API (fast, free tier, needs internet)
+    # "ollama" → uses local Ollama (private, offline, needs install)
+    llm_provider: str = "gemini"
+
+    # ── Gemini API ───────────────────────────────────────────────
+    gemini_api_key: str = ""
+    gemini_primary_model: str = "gemini-2.0-flash"
+    gemini_fast_model: str = "gemini-2.0-flash"
+    gemini_embed_model: str = "models/text-embedding-004"
+    gemini_temperature: float = 0.1
+
+    # ── Ollama (local, fallback) ─────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
     ollama_primary_model: str = "codestral"
     ollama_fast_model: str = "qwen2.5-coder:7b"
@@ -67,6 +79,14 @@ class Settings(BaseSettings):
     @property
     def max_file_size_bytes(self) -> int:
         return self.max_file_size_mb * 1024 * 1024
+
+    @property
+    def using_gemini(self) -> bool:
+        return self.llm_provider.lower() == "gemini"
+
+    @property
+    def using_ollama(self) -> bool:
+        return self.llm_provider.lower() == "ollama"
 
 
 @lru_cache

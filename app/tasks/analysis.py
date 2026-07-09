@@ -82,6 +82,21 @@ def run_full_analysis(self, session_id: str) -> dict:
             json.dumps(placeholder_result),
         )
 
+        # ── Store cache key for deduplication ─────────
+        import hashlib
+        cache_key = "analysis:" + hashlib.sha256(f"{language}:{code}".encode()).hexdigest()
+        cache_data = {
+            "session_id": session_id,
+            "language": language,
+            "filename": session.get("filename"),
+            "submitted_at": session.get("submitted_at")
+        }
+        r.setex(
+            f"cache:{cache_key}",
+            settings.redis_cache_ttl_analysis,
+            json.dumps(cache_data),
+        )
+
         # ── Update status: completed ─────────────────
         session["status"] = "completed"
         session["completed_at"] = datetime.utcnow().isoformat()

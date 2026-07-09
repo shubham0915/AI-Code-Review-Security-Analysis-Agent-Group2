@@ -126,19 +126,22 @@ async def submit_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
         import json
         cached = json.loads(cached_session)
         logger.info(f"Cache hit for existing analysis: {cached['session_id']}")
+        loc = len(request.code.splitlines())
         return SubmissionResponse(
             session_id=cached["session_id"],
             status=TaskStatus.completed,
             language=language,
+            lines_of_code=loc,
+            estimated_seconds=0,
             message="Returning cached analysis result.",
         )
 
     # ── 5. Create session + queue Celery task ────────
     submission = await _create_session(request.code, language, request.filename)
 
-    # Queue the full agent pipeline (will be implemented in Milestone 3)
-    # from app.tasks.analysis import run_full_analysis
-    # run_full_analysis.delay(submission.session_id)
+    # Queue the full agent pipeline
+    from app.tasks.analysis import run_full_analysis
+    run_full_analysis.delay(submission.session_id)
     logger.info(f"Queued analysis task for session: {submission.session_id}")
 
     return submission
@@ -210,6 +213,8 @@ async def submit_file(
 
     # ── 7. Create session + queue ────────────────────
     submission = await _create_session(code, language, filename)
+    from app.tasks.analysis import run_full_analysis
+    run_full_analysis.delay(submission.session_id)
     logger.info(f"File '{filename}' queued: {submission.session_id}")
     return submission
 

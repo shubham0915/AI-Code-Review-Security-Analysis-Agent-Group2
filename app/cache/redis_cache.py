@@ -1,56 +1,71 @@
 """
-app/cache/redis_cache.py — Async Redis client singleton.
+app/cache/redis_cache.py — Async Redis client with in-memory fallback.
 
-Uses redis.asyncio for FastAPI compatibility.
+Tries to connect to Redis. If Redis is unavailable (no Docker, no brew),
+automatically falls back to the in-memory store so the app still works.
 """
 from __future__ import annotations
 
-import redis.asyncio as aioredis
-from functools import lru_cache
 from loguru import logger
-
 from app.config import get_settings
+from app.cache.memory_store import MemoryClient
 
-_redis_client: aioredis.Redis | None = None
+_client = None
+_using_memory = False
 
 
-async def get_redis_client() -> aioredis.Redis:
-    """Return the shared async Redis client, creating it if needed."""
-    global _redis_client
-    if _redis_client is None:
-        settings = get_settings()
-        _redis_client = aioredis.from_url(
+async def get_redis_client():
+    global _client, _using_memory
+
+    if _client is not None:
+        return _client
+
+    settings = get_settings()
+
+    # Try real Redis first
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(
             settings.redis_url,
             encoding="utf-8",
             decode_responses=True,
-            max_connections=20,
+            socket_connect_timeout=1,
+            socket_timeout=1,
         )
-        logger.info(f"Redis client initialised: {settings.redis_url}")
-    return _redis_client
+        await r.ping()
+        _client = r
+        _using_memory = False
+        logger.info(f"✅ Connected to Redis: {settings.redis_url}")
+        return _client
+    except Exception as e:
+        logger.warning(f"⚠️  Redis unavailable ({e}). Using in-memory store (dev mode).")
+        _client = MemoryClient()
+        _using_memory = True
+        return _client
 
 
 async def close_redis():
-    """Close the Redis connection pool gracefully."""
-    global _redis_client
-    if _redis_client:
-        await _redis_client.aclose()
-        _redis_client = None
-        logger.info("Redis connection closed.")
+    global _client
+    if _client:
+        await _client.aclose()
+        _client = None
+    logger.info("Cache connection closed.")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Cache helpers
-# ─────────────────────────────────────────────────────────────────────────────
 async def cache_set(key: str, value: str, ttl: int) -> None:
-    redis = await get_redis_client()
-    await redis.setex(key, ttl, value)
+    r = await get_redis_client()
+    await r.setex(key, ttl, value)
 
 
 async def cache_get(key: str) -> str | None:
-    redis = await get_redis_client()
-    return await redis.get(key)
+    r = await get_redis_client()
+    return await r.get(key)
 
 
 async def cache_delete(key: str) -> None:
-    redis = await get_redis_client()
-    await redis.delete(key)
+    r = await get_redis_client()
+    await r.delete(key)
+
+
+def is_using_memory_fallback() -> bool:
+    return _using_memory
