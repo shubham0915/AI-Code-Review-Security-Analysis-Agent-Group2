@@ -51,3 +51,7 @@ grafana_data/
 # DVC
 .dvc/tmp/
 .dvc/cache/
+
+# Local-only folders (not part of any milestone, do not push)
+others/
+.pytest_cache/
