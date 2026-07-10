@@ -22,6 +22,7 @@ data/knowledge_base/*.html
 
 # Coverage
 .coverage
+.coverage.*
 htmlcov/
 coverage.xml
 .pytest_cache/
