@@ -8,6 +8,7 @@ Java:   uses heuristic brace/bracket balance + keyword checks
 from __future__ import annotations
 
 import ast
+import os
 import re
 from typing import Optional
 
@@ -39,19 +40,101 @@ def _validate_python(code: str) -> SubmissionValidationResponse:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Java Validator (lightweight heuristic)
+# Java Validator — uses javac for exact line/column error reporting
 # ─────────────────────────────────────────────────────────────────────────────
 def _validate_java(code: str) -> SubmissionValidationResponse:
+    """
+    Validates Java source code by compiling it with javac.
+    Returns exact line numbers, column positions, and error messages.
+    Falls back to heuristic checks if javac is not available.
+    """
+    import subprocess
+    import tempfile
+
     errors: list[ValidationError] = []
 
-    # 1. Must have at least one class declaration
+    # ── Try javac first ───────────────────────────────────────────────────────
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Determine class name from code (javac requires filename == public class name)
+            class_match = re.search(r'\bpublic\s+class\s+(\w+)', code)
+            class_name = class_match.group(1) if class_match else "Main"
+            tmp_file = os.path.join(tmp_dir, f"{class_name}.java")
+
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                f.write(code)
+
+            result = subprocess.run(
+                ["javac", tmp_file],
+                capture_output=True,
+                text=True,
+                timeout=15,   # 15s timeout — plenty for syntax check
+            )
+
+            if result.returncode == 0:
+                return SubmissionValidationResponse(
+                    valid=True,
+                    errors=[],
+                    detail=f"Java syntax is valid (compiled by javac {_get_javac_version()}).",
+                )
+
+            # Parse javac error output:  "FileName.java:10: error: ';' expected"
+            stderr = result.stderr
+            # Replace the temp file path prefix to keep messages clean
+            stderr = stderr.replace(tmp_file + ":", "Line ")
+
+            for line in stderr.splitlines():
+                # Match pattern: "Line 5: error: ';' expected"
+                m = re.match(r"Line\s+(\d+):\s+(error|warning):\s+(.*)", line)
+                if m:
+                    lineno, severity, msg = m.group(1), m.group(2), m.group(3)
+                    errors.append(ValidationError(
+                        field="code",
+                        message=f"{severity.capitalize()} at line {lineno}: {msg}",
+                        line=int(lineno),
+                    ))
+
+            if not errors and stderr.strip():
+                # Fallback — javac returned errors but regex didn't parse them
+                errors.append(ValidationError(field="code", message=stderr.strip()))
+
+            return SubmissionValidationResponse(
+                valid=False,
+                errors=errors,
+                detail=f"Java compilation failed with {len(errors)} error(s).",
+            )
+
+    except FileNotFoundError:
+        logger.warning("javac not found — falling back to heuristic Java validation.")
+        return _validate_java_heuristic(code)
+    except subprocess.TimeoutExpired:
+        logger.warning("javac timed out — falling back to heuristic Java validation.")
+        return _validate_java_heuristic(code)
+    except Exception as e:
+        logger.error(f"javac validation error: {e}")
+        return _validate_java_heuristic(code)
+
+
+def _get_javac_version() -> str:
+    """Return the javac version string for display."""
+    import subprocess
+    try:
+        r = subprocess.run(["javac", "-version"], capture_output=True, text=True, timeout=3)
+        return (r.stdout or r.stderr).strip()
+    except Exception:
+        return "unknown"
+
+
+def _validate_java_heuristic(code: str) -> SubmissionValidationResponse:
+    """Lightweight fallback Java validator used when javac is unavailable."""
+    errors: list[ValidationError] = []
+
     if not re.search(r'\b(class|interface|enum)\s+\w+', code):
         errors.append(ValidationError(
             field="code",
             message="No class, interface, or enum declaration found. Is this valid Java?",
         ))
 
-    # 2. Brace balance check
     open_braces = code.count("{")
     close_braces = code.count("}")
     if open_braces != close_braces:
@@ -60,7 +143,6 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
             message=f"Unbalanced braces: {open_braces} opening '{{' vs {close_braces} closing '}}'.",
         ))
 
-    # 3. Parenthesis balance
     open_parens = code.count("(")
     close_parens = code.count(")")
     if open_parens != close_parens:
@@ -69,19 +151,13 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
             message=f"Unbalanced parentheses: {open_parens} '(' vs {close_parens} ')'.",
         ))
 
-    # 4. Check for obvious encoding issues
-    try:
-        code.encode("utf-8")
-    except UnicodeEncodeError as e:
-        errors.append(ValidationError(field="code", message=f"Encoding error: {e}"))
-
     if errors:
         return SubmissionValidationResponse(
-            valid=False,
-            errors=errors,
-            detail="Java syntax pre-validation failed.",
+            valid=False, errors=errors, detail="Java heuristic pre-validation failed."
         )
-    return SubmissionValidationResponse(valid=True, errors=[], detail="Java syntax pre-check passed.")
+    return SubmissionValidationResponse(
+        valid=True, errors=[], detail="Java heuristic pre-check passed (javac unavailable)."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

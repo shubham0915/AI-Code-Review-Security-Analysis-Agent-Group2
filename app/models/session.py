@@ -77,6 +77,8 @@ class ValidationError(BaseModel):
     """Model for code validation errors returned to the client."""
     field: str
     message: str
+    line: Optional[int] = None       # Line number where the error occurred
+    column: Optional[int] = None     # Column number (if available)
 
 
 class SubmissionValidationResponse(BaseModel):

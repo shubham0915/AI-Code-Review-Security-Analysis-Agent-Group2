@@ -456,28 +456,64 @@ with tab_paste:
             label_visibility="collapsed",
         )
 
-    # ── Metrics row ──────────────────────────────────────────────────────────
+    # ── Live language detection + syntax check ──────────────────────────────
     if code_input and code_input.strip():
         lines = code_input.splitlines()
+        detected = _detect_language(code_input) if language_choice == "auto" else language_choice
+
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         col_m1.metric("Lines of Code", len(lines))
         col_m2.metric("Characters", len(code_input))
-        col_m3.metric("Language", language_choice.upper())
-        detected = _detect_language(code_input) if language_choice == "auto" else language_choice
+        col_m3.metric("Selected", language_choice.upper())
         col_m4.metric("Detected As", detected.upper())
+
+        # Auto-run local syntax check and show result immediately
+        live_val = _local_validate(code_input, detected)
+        if live_val["valid"]:
+            st.markdown(f"""
+            <div style="background:rgba(16,185,129,0.1);border:1px solid #10b981;border-radius:8px;
+                        padding:10px 16px;margin:8px 0;display:flex;align-items:center;gap:10px">
+              <span style="font-size:1.2rem">✅</span>
+              <div>
+                <b style="color:#10b981">No Syntax Errors</b>
+                <span style="color:#94a3b8;font-size:13px;margin-left:10px">
+                  Language: <b>{detected.upper()}</b> — {live_val.get('detail','')}
+                </span>
+              </div>
+            </div>""", unsafe_allow_html=True)
+        else:
+            error_count = len(live_val.get("errors", []))
+            st.markdown(f"""
+            <div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;
+                        padding:10px 16px;margin:8px 0">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:1.2rem">❌</span>
+                <b style="color:#ef4444">Syntax Error{'s' if error_count > 1 else ''} Found ({error_count})</b>
+                <span style="color:#94a3b8;font-size:13px;margin-left:6px">Language: <b>{detected.upper()}</b></span>
+              </div>""", unsafe_allow_html=True)
+            for err in live_val.get("errors", []):
+                msg = err.get("message", "")
+                line_no = err.get("line")
+                location = f"Line {line_no} → " if line_no else ""
+                st.markdown(f"""
+              <div style="background:rgba(0,0,0,0.3);border-left:3px solid #ef4444;
+                          padding:6px 12px;margin:4px 0;border-radius:0 6px 6px 0;font-family:monospace">
+                <span style="color:#fca5a5">{location}{msg}</span>
+              </div>""", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
     # ── Action buttons ────────────────────────────────────────────────────────
     st.markdown(" ")
     col_v, col_a, col_clear = st.columns([1.2, 1.5, 4])
 
     with col_v:
-        validate_btn = st.button("✔️ Validate Syntax", key="validate_paste_btn")
+        validate_btn = st.button("✔️ Re-validate Syntax", key="validate_paste_btn")
     with col_a:
         analyze_btn = st.button("🚀 Submit for Analysis", key="analyze_paste_btn", type="primary")
     with col_clear:
         pass
 
-    # Validate
+    # Manual re-validate (calls API for detailed server-side validation)
     if validate_btn:
         if not code_input or not code_input.strip():
             st.warning("⚠️ Please enter some code first.")
@@ -578,23 +614,49 @@ with tab_upload:
         if file_code:
             file_lines = file_code.splitlines()
             file_size_kb = len(raw_bytes) / 1024
+            detected_file_lang = _detect_language(file_code, uploaded_file.name)
 
-            # File info
+            # ── File info metrics ─────────────────────────────────────────────
             col_fi1, col_fi2, col_fi3, col_fi4 = st.columns(4)
             col_fi1.metric("File", uploaded_file.name)
             col_fi2.metric("Size", f"{file_size_kb:.1f} KB")
             col_fi3.metric("Lines", len(file_lines))
-            detected_file_lang = _detect_language(file_code, uploaded_file.name)
             col_fi4.metric("Detected Language", detected_file_lang.upper())
 
-            # Validation check
+            # ── Live syntax validation result ─────────────────────────────────
             val_res = _local_validate(file_code, detected_file_lang)
             if val_res["valid"]:
-                st.success(f"✅ {val_res['detail']}")
+                st.markdown(f"""
+                <div style="background:rgba(16,185,129,0.1);border:1px solid #10b981;border-radius:8px;
+                            padding:10px 16px;margin:8px 0;display:flex;align-items:center;gap:10px">
+                  <span style="font-size:1.2rem">✅</span>
+                  <div>
+                    <b style="color:#10b981">No Syntax Errors</b>
+                    <span style="color:#94a3b8;font-size:13px;margin-left:10px">
+                      Language: <b>{detected_file_lang.upper()}</b> — {val_res.get('detail','')}
+                    </span>
+                  </div>
+                </div>""", unsafe_allow_html=True)
             else:
-                st.error(f"❌ {val_res['detail']}")
+                error_count = len(val_res.get("errors", []))
+                st.markdown(f"""
+                <div style="background:rgba(239,68,68,0.1);border:1px solid #ef4444;border-radius:8px;
+                            padding:10px 16px;margin:8px 0">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                    <span style="font-size:1.2rem">❌</span>
+                    <b style="color:#ef4444">Syntax Error{'s' if error_count > 1 else ''} Found ({error_count})</b>
+                    <span style="color:#94a3b8;font-size:13px;margin-left:6px">Language: <b>{detected_file_lang.upper()}</b></span>
+                  </div>""", unsafe_allow_html=True)
                 for err in val_res.get("errors", []):
-                    st.code(err["message"], language="text")
+                    msg = err.get("message", "")
+                    line_no = err.get("line")
+                    location = f"Line {line_no} → " if line_no else ""
+                    st.markdown(f"""
+                  <div style="background:rgba(0,0,0,0.3);border-left:3px solid #ef4444;
+                              padding:6px 12px;margin:4px 0;border-radius:0 6px 6px 0;font-family:monospace">
+                    <span style="color:#fca5a5">{location}{msg}</span>
+                  </div>""", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
             # Code preview
             with st.expander("👁️ Preview file contents", expanded=False):
