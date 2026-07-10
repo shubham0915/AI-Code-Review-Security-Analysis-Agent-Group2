@@ -270,41 +270,28 @@ def api_rag_query(question: str) -> dict:
 # Local (no-API) validators & submit — runs fully in-browser
 # ─────────────────────────────────────────────────────────────────────────────
 def _detect_language(code: str, filename: str = "") -> str:
-    import os, re
-    if filename:
-        ext = os.path.splitext(filename)[1].lower()
-        if ext == ".py": return "python"
-        if ext == ".java": return "java"
-    java_kw = ["public class", "System.out.", "import java.", "public static void main"]
-    py_kw   = ["def ", "import ", "print(", "self.", "__init__"]
-    j = sum(1 for k in java_kw if k in code[:3000])
-    p = sum(1 for k in py_kw  if k in code[:3000])
-    return "java" if j > p else "python"
+    from app.utils.language_detector import detect_language
+    return detect_language(code, filename).value
 
 
 def _local_validate(code: str, language: str) -> dict:
+    from app.utils.code_validator import validate_code
+    from app.models.session import Language
+    
     if not code.strip():
         return {"valid": False, "errors": [{"field": "code", "message": "Code is empty."}], "detail": "Empty submission."}
-
-    if language == "python" or language == "auto":
-        try:
-            ast.parse(code)
-            return {"valid": True, "errors": [], "detail": "✅ Python syntax is valid."}
-        except SyntaxError as e:
-            return {"valid": False, "errors": [{"field": "code", "message": f"SyntaxError at line {e.lineno}: {e.msg}"}], "detail": "Syntax error."}
-
-    if language == "java":
-        errors = []
-        import re
-        if not re.search(r'\b(class|interface|enum)\s+\w+', code):
-            errors.append({"field": "code", "message": "No class/interface/enum declaration found."})
-        if code.count("{") != code.count("}"):
-            errors.append({"field": "code", "message": f"Unbalanced braces: {code.count('{')} open vs {code.count('}')} close."})
-        if errors:
-            return {"valid": False, "errors": errors, "detail": "Java pre-validation failed."}
-        return {"valid": True, "errors": [], "detail": "✅ Java syntax pre-check passed."}
-
-    return {"valid": True, "errors": [], "detail": "Language not validated (pass-through)."}
+        
+    try:
+        lang_enum = Language(language)
+    except ValueError:
+        lang_enum = Language.python
+        
+    result = validate_code(code, lang_enum)
+    return {
+        "valid": result.valid,
+        "errors": [{"field": e.field, "message": e.message, "line": e.line} for e in result.errors],
+        "detail": result.detail
+    }
 
 
 def _local_submit(code: str, language: str, filename: str = "") -> dict:
