@@ -270,28 +270,98 @@ def api_rag_query(question: str) -> dict:
 # Local (no-API) validators & submit — runs fully in-browser
 # ─────────────────────────────────────────────────────────────────────────────
 def _detect_language(code: str, filename: str = "") -> str:
-    from app.utils.language_detector import detect_language
-    return detect_language(code, filename).value
+    import os, re
+    if filename:
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".py": return "python"
+        if ext == ".java": return "java"
+    
+    _JAVA_KEYWORDS = [
+        "public class", "private class", "protected class",
+        "public static void main", "import java.", "import javax.",
+        "System.out.", "System.err.", "System.in.",
+        "extends ", "implements ", "new ArrayList", "new HashMap",
+        "new LinkedList", "new HashSet",
+        "@Override", "@NotNull", "@Nullable",
+        "throws ", "catch (", "finally {",
+        "String[] args", "void main", "public static",
+        "private static", "protected static",
+    ]
+    _PYTHON_KEYWORDS = [
+        "def ", "elif ", "__init__", "self.", "lambda ", "yield ",
+        "if __name__", "#!/usr/bin/env python", "# -*-",
+        "print(", "from __future__",
+    ]
+    
+    sample = code[:3000]
+    j = sum(1 for k in _JAVA_KEYWORDS if k in sample)
+    p = sum(1 for k in _PYTHON_KEYWORDS if k in sample)
+    
+    if j > 0 and j >= p:
+        return "java"
+    if p > 0:
+        return "python"
+    return "python"
 
 
 def _local_validate(code: str, language: str) -> dict:
-    from app.utils.code_validator import validate_code
-    from app.models.session import Language
-    
     if not code.strip():
         return {"valid": False, "errors": [{"field": "code", "message": "Code is empty."}], "detail": "Empty submission."}
         
-    try:
-        lang_enum = Language(language)
-    except ValueError:
-        lang_enum = Language.python
+    if language == "python" or language == "auto":
+        import ast
+        try:
+            ast.parse(code)
+            return {"valid": True, "errors": [], "detail": "✅ Python syntax is valid."}
+        except SyntaxError as e:
+            return {"valid": False, "errors": [{"field": "code", "message": f"SyntaxError at line {e.lineno}: {e.msg}", "line": e.lineno}], "detail": "Syntax error."}
+        except Exception as e:
+            return {"valid": False, "errors": [{"field": "code", "message": str(e)}], "detail": "Validation error."}
+            
+    if language == "java":
+        import subprocess
+        import tempfile
+        import os
+        import re
         
-    result = validate_code(code, lang_enum)
-    return {
-        "valid": result.valid,
-        "errors": [{"field": e.field, "message": e.message, "line": e.line} for e in result.errors],
-        "detail": result.detail
-    }
+        errors = []
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                class_match = re.search(r'\bpublic\s+class\s+(\w+)', code)
+                class_name = class_match.group(1) if class_match else "Main"
+                tmp_file = os.path.join(tmp_dir, f"{class_name}.java")
+                
+                with open(tmp_file, "w", encoding="utf-8") as f:
+                    f.write(code)
+                    
+                result = subprocess.run(["javac", tmp_file], capture_output=True, text=True, timeout=10)
+                if result.returncode == 0:
+                    return {"valid": True, "errors": [], "detail": "✅ Java syntax is valid (compiled successfully)."}
+                    
+                stderr = result.stderr.replace(tmp_file + ":", "Line ")
+                for line in stderr.splitlines():
+                    m = re.match(r"Line\s+(\d+):\s+(error|warning):\s+(.*)", line)
+                    if m:
+                        errors.append({"field": "code", "message": f"{m.group(2).capitalize()} at line {m.group(1)}: {m.group(3)}", "line": int(m.group(1))})
+                
+                if not errors and stderr.strip():
+                    errors.append({"field": "code", "message": stderr.strip()})
+                    
+                return {"valid": False, "errors": errors, "detail": f"Java compilation failed with {len(errors)} error(s)."}
+        except Exception as e:
+            # Fallback to heuristic
+            if not re.search(r'\b(class|interface|enum)\s+\w+', code):
+                errors.append({"field": "code", "message": "No class, interface, or enum declaration found."})
+            if code.count("{") != code.count("}"):
+                errors.append({"field": "code", "message": f"Unbalanced braces."})
+            if code.count("(") != code.count(")"):
+                errors.append({"field": "code", "message": f"Unbalanced parentheses."})
+                
+            if errors:
+                return {"valid": False, "errors": errors, "detail": "Java heuristic pre-validation failed."}
+            return {"valid": True, "errors": [], "detail": "✅ Java heuristic pre-check passed."}
+            
+    return {"valid": True, "errors": [], "detail": "Language not validated (pass-through)."}
 
 
 def _local_submit(code: str, language: str, filename: str = "") -> dict:
