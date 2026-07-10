@@ -4,7 +4,7 @@ app/utils/language_detector.py — Detect Python vs Java from code and filename.
 Strategy (in order of priority):
   1. File extension (.py → python, .java → java)
   2. Pygments lexer guess
-  3. Heuristic keyword scan
+  3. Heuristic keyword scan (Java-biased on ties — Java keywords are more specific)
   4. Default: python
 """
 from __future__ import annotations
@@ -17,19 +17,32 @@ from loguru import logger
 from app.models.session import Language
 
 
-# Java-specific keywords that rarely appear in Python
+# Java-specific keywords — these are VERY unlikely to appear in Python code
 _JAVA_KEYWORDS = frozenset([
     "public class", "private class", "protected class",
-    "public static void main", "import java.", "System.out.",
+    "public static void main", "import java.", "import javax.",
+    "System.out.", "System.err.", "System.in.",
     "extends ", "implements ", "new ArrayList", "new HashMap",
-    "@Override", "throws ", "catch (", "finally {",
+    "new LinkedList", "new HashSet",
+    "@Override", "@NotNull", "@Nullable",
+    "throws ", "catch (", "finally {",
+    "String[] args", "void main", "public static",
+    "private static", "protected static",
 ])
 
-# Python-specific patterns
+# Python-specific patterns — deliberately avoiding 'import ' (too generic)
 _PYTHON_KEYWORDS = frozenset([
-    "def ", "import ", "from ", "elif ", "print(",
-    "__init__", "self.", "lambda ", "yield ",
-    "if __name__", "#!/usr/bin/env python",
+    "def ",           # Python function definitions
+    "elif ",          # Python-specific (Java uses 'else if')
+    "__init__",       # Python class constructor magic method
+    "self.",          # Python instance method first argument
+    "lambda ",        # Python anonymous functions
+    "yield ",         # Python generators
+    "if __name__",    # Python main guard
+    "#!/usr/bin/env python",   # Python shebang
+    "# -*-",          # Python encoding declaration
+    "print(",         # Python 3 print function (careful — not definitive alone)
+    "from __future__",        # Python future imports
 ])
 
 
@@ -38,7 +51,7 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
     Return Language.python or Language.java.
     Never returns Language.auto.
     """
-    # 1. Extension hint
+    # 1. Extension hint — most reliable signal
     if filename:
         ext = os.path.splitext(filename)[1].lower()
         if ext == ".py":
@@ -46,7 +59,7 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
         if ext == ".java":
             return Language.java
 
-    # 2. Try pygments
+    # 2. Try pygments (the same engine VS Code uses)
     try:
         from pygments.lexers import guess_lexer
         from pygments.lexers import PythonLexer, JavaLexer
@@ -64,7 +77,11 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
     java_score = sum(1 for kw in _JAVA_KEYWORDS if kw in sample)
     python_score = sum(1 for kw in _PYTHON_KEYWORDS if kw in sample)
 
-    if java_score > python_score:
+    logger.debug(f"Language scores — Java: {java_score}, Python: {python_score}")
+
+    # Java keywords are highly specific (e.g. 'import java.', 'System.out.'),
+    # so we favour Java on ties (java_score >= python_score AND java_score > 0)
+    if java_score > 0 and java_score >= python_score:
         logger.debug(f"Language detected: java (score: java={java_score}, python={python_score})")
         return Language.java
     if python_score > 0:
