@@ -11,7 +11,7 @@ from loguru import logger
 import chromadb
 
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, StorageContext, Settings
-from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.node_parser import MarkdownNodeParser
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.embeddings.ollama import OllamaEmbedding
 
@@ -70,7 +70,7 @@ def build_or_load_index(kb_dir: str = "data/knowledge_base") -> VectorStoreIndex
     # 2. Configure LlamaIndex global Settings
     Settings.embed_model = get_llama_embeddings()
     Settings.llm = get_llama_llm()
-    Settings.node_parser = SentenceSplitter(chunk_size=512, chunk_overlap=64)
+    Settings.node_parser = MarkdownNodeParser()
     
     # 3. Create persistent ChromaDB client
     logger.info(f"Connecting to ChromaDB at: {db_path}")
