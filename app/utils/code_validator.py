@@ -185,6 +185,12 @@ def validate_code(code: str, language: Language) -> SubmissionValidationResponse
         result = _validate_python(code)
     elif language == Language.java:
         result = _validate_java(code)
+    elif language == Language.unsupported:
+        result = SubmissionValidationResponse(
+            valid=False,
+            errors=[ValidationError(field="language", message="Unsupported language detected. Please write code in Java or Python only.")],
+            detail="Unsupported Language.",
+        )
     else:
         # Unknown language: pass through (will be caught by linters later)
         result = SubmissionValidationResponse(

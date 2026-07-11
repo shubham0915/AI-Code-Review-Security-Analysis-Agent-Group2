@@ -275,6 +275,8 @@ def _detect_language(code: str, filename: str = "") -> str:
         ext = os.path.splitext(filename)[1].lower()
         if ext == ".py": return "python"
         if ext == ".java": return "java"
+        if ext in [".js", ".ts", ".html", ".css", ".cpp", ".c", ".go", ".rs", ".rb", ".php", ".sh", ".json"]:
+            return "unsupported"
     
     _JAVA_KEYWORDS = [
         "public class", "private class", "protected class",
@@ -301,12 +303,28 @@ def _detect_language(code: str, filename: str = "") -> str:
         return "java"
     if p > 0:
         return "python"
-    return "python"
+        
+    try:
+        from pygments.lexers import guess_lexer
+        from pygments.lexers import PythonLexer, JavaLexer
+        lexer = guess_lexer(code)
+        if isinstance(lexer, PythonLexer): return "python"
+        if isinstance(lexer, JavaLexer): return "java"
+        name = lexer.name.lower()
+        if name not in ["text only", "text", "python", "java"]:
+            return "unsupported"
+    except Exception:
+        pass
+        
+    return "unsupported"
 
 
 def _local_validate(code: str, language: str) -> dict:
     if not code.strip():
         return {"valid": False, "errors": [{"field": "code", "message": "Code is empty."}], "detail": "Empty submission."}
+        
+    if language == "unsupported":
+        return {"valid": False, "errors": [{"field": "language", "message": "Unsupported language detected. Please write code in Java or Python only."}], "detail": "Unsupported Language."}
         
     if language == "python" or language == "auto":
         import ast

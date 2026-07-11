@@ -58,6 +58,9 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
             return Language.python
         if ext == ".java":
             return Language.java
+        if ext in [".js", ".ts", ".html", ".css", ".cpp", ".c", ".go", ".rs", ".rb", ".php", ".sh", ".json"]:
+            logger.warning(f"Unsupported file extension detected: {ext}")
+            return Language.unsupported
 
     # 2. Try pygments (the same engine VS Code uses)
     try:
@@ -65,10 +68,19 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
         from pygments.lexers import PythonLexer, JavaLexer
 
         lexer = guess_lexer(code)
+        
+        # Check explicit hits
         if isinstance(lexer, PythonLexer):
             return Language.python
         if isinstance(lexer, JavaLexer):
             return Language.java
+            
+        # If Pygments explicitly identifies it as a known but unsupported language
+        # (ignoring 'Text only' since it's a fallback for small snippets)
+        name = lexer.name.lower()
+        if name not in ["text only", "text", "python", "java"]:
+            logger.warning(f"Pygments detected unsupported language: {lexer.name}")
+            return Language.unsupported
     except Exception:
         pass
 
@@ -88,6 +100,6 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
         logger.debug(f"Language detected: python (score: python={python_score}, java={java_score})")
         return Language.python
 
-    # 4. Default
-    logger.warning("Could not detect language; defaulting to Python")
-    return Language.python
+    # 4. Default: if no keywords match and Pygments didn't catch it, it's likely unsupported text/code
+    logger.warning("Could not detect any Python or Java patterns; marking as unsupported.")
+    return Language.unsupported

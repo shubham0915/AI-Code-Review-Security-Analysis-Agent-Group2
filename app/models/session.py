@@ -15,6 +15,7 @@ class Language(str, Enum):
     python = "python"
     java = "java"
     auto = "auto"
+    unsupported = "unsupported"
 
 
 class TaskStatus(str, Enum):
