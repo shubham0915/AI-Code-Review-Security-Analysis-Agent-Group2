@@ -23,6 +23,95 @@
 
 ---
 
+## 🛑 Current Project State & Architecture Evolution
+
+> **NOTE:** The architecture and structure detailed below represent the **exact working state** of the project today (Milestone 1). All future aspects, pipelines, and agents defined *after* the Table of Contents represent the complete long-term vision of the platform.
+
+### 🏗️ Architecture Evolution (How We Built This)
+
+| Feature | Phase 1: The Initial Approach | Phase 2: The Current State (Latest) | Phase 3: What Can Be Improved? |
+| :--- | :--- | :--- | :--- |
+| **Language Detection** | **Regex Keyword Matching:** Scanned code for hardcoded keywords (`def`, `import`). *Flaw:* `import` matched both Java and Python, causing misclassification. | **Google Magika (Machine Learning):** Uses a tiny ONNX neural network to identify file contents instantly based on statistical structures. Supported by strict fallback heuristics. | **Fine-Tuned LLM Classifier:** Passing snippets to a specialized small-parameter model to understand mixed-language contexts or custom frameworks. |
+| **Python Syntax Validation** | **`ast.parse()`:** Built-in Python standard library used to parse the code into an Abstract Syntax Tree. | **`ast.parse()`:** (Unchanged). It remains the fastest, most precise, and natively supported way to check Python syntax in a Python backend. | **Linting integration:** Adding `ruff` or `flake8` to detect deeper logical errors (e.g. unused imports, bad scoping) rather than just syntax formatting. |
+| **Java Syntax Validation** | **Regex Heuristics & `javac` Subprocess:** Initially just counted `{}` braces. Then upgraded to writing temporary files to disk and booting up the heavy Java Compiler (`javac`). *Flaw:* Very slow and requires the server to have a Java JDK installed. | **`javalang` (Pure Python AST):** We replaced the heavy `javac` subprocess with a lightweight, pure Python library. It instantly parses Java code in-memory just like Python's `ast.parse()`, with 0 millisecond delay. | **Tree-sitter:** Upgrading to `tree-sitter-java`, which is the industry standard (used by VS Code / GitHub) for ultra-fast, robust, error-tolerant syntax parsing. |
+| **File Upload Security** | **Blind Extension Trust:** Relied purely on the uploaded file's extension (e.g. `.py` was assumed to be Python). *Flaw:* Vulnerable to spoofing (e.g., uploading a `virus.exe` renamed to `main.py`). | **Magic Byte Content Sniffing:** We pass the raw file bytes through Magika AI. If the file claims to be Python (`.py`) but the AI detects C++ or Executable binaries, we instantly block it with an `Extension Mismatch` error. | **Deep Content Scanning:** Pre-scanning the file for known malware signatures or shell-code patterns before even running the language detection layer. |
+| **UI Gatekeeper UX** | **Reactive Validation:** The "Submit" button was always clickable, but would throw an error *after* you clicked it if the code was invalid. | **Proactive Fail-Fast UX:** The "Submit" buttons are now dynamically bound to the live syntax state. If there is a syntax error or mismatch, the buttons become **completely disabled and greyed out**. | **Inline Editor Diagnostics:** Highlighting the exact character inside the Monaco code editor with a red squiggly line, rather than just showing the error below the editor. |
+| **RAG Chunking Strategy** | **`SentenceSplitter`:** Chunked markdown files by exactly 512 tokens. *Flaw:* Cut technical documents randomly in the middle of sections, causing the AI to lose critical `## Headers` and structural context. | **`MarkdownNodeParser`:** Reads the raw `.md` file structure. Groups chunks logically by headers and bullet points. Automatically injects the structural header path directly into the chunk's AI context metadata. | **Semantic Chunking:** Passing the documents through an Embedding Model during chunking to dynamically detect and split paragraphs exactly when the "topic" logically shifts. |
+| **Vector Embedding & Storage** | **Cloud APIs (OpenAI / Gemini):** Sending chunks over the internet to be embedded, requiring API keys, recurring costs, and exposing proprietary security guidelines to external servers. | **Local Embeddings (Ollama + ChromaDB):** Using local `nomic-embed-text` (a RAG-optimized model) to convert chunks into mathematical vectors for free, and storing them in an embedded `ChromaDB` SQLite-like local database. | **Dedicated Vector Cloud:** Using a dedicated, managed Vector Database (like Pinecone or Qdrant) if the knowledge base scales to millions of documents requiring distributed enterprise search. |
+
+### 📁 Project Structure (Current State)
+
+```text
+AI-Code-Review-Security-Analysis-Agent-Group2/
+│
+├── 📄 README.md                    # Main project documentation & setup guide
+├── 📄 requirements.txt             # All Python package dependencies (pip install -r)
+├── 📄 pyproject.toml               # Project metadata & tool configuration (pytest, linters)
+├── 📄 uv.lock                      # Locked dependency versions for reproducible installs
+├── 📄 .env.example                 # Template showing all required environment variables
+├── 📄 .env                         # Your actual secrets/settings (⚠️ NOT pushed to GitHub)
+├── 📄 .gitignore                   # Tells Git which files/folders to never push
+│
+├── 📁 .github/
+│   └── 📁 workflows/
+│       └── 📄 ci.yml               # GitHub Actions — auto-runs tests on every push
+│
+├── 📁 app/                         # 🏗️ Core FastAPI Backend Application
+│   ├── 📄 main.py                  # App entry point — registers all routes, starts server
+│   ├── 📄 config.py                # Reads .env variables into a typed Settings object
+│   ├── 📄 celery_app.py            # Creates the Celery worker instance connected to Redis
+│   │
+│   ├── 📁 api/routes/              # HTTP API Layer (FastAPI Routers)
+│   │   ├── 📄 health.py            # GET /health — checks if server is alive
+│   │   ├── 📄 submit.py            # POST /submit/paste & /submit/file — receives code
+│   │   ├── 📄 status.py            # GET /status/{id} — polls background job progress
+│   │   ├── 📄 result.py            # GET /result/{id} — fetches completed analysis output
+│   │   └── 📄 rag.py               # POST /rag/query — queries the OWASP knowledge base
+│   │
+│   ├── 📁 cache/                   # Session & Result Storage
+│   │   ├── 📄 redis_cache.py       # Stores sessions/results in Redis (primary store)
+│   │   └── 📄 memory_store.py      # In-memory fallback if Redis is not running
+│   │
+│   ├── 📁 llm/                     # LLM Provider Abstraction
+│   │   └── 📄 factory.py           # Routes LLM calls to Ollama or Gemini based on .env
+│   │
+│   ├── 📁 models/                  # Pydantic Data Models (strict type contracts)
+│   │   ├── 📄 session.py           # SubmissionRequest, SubmissionResponse, TaskStatus
+│   │   ├── 📄 findings.py          # AnalysisFinding model (severity, line_number, etc.)
+│   │   └── 📄 report.py            # FinalReport model (overall_score, findings list)
+│   │
+│   ├── 📁 rag/                     # RAG Pipeline (Retrieval-Augmented Generation)
+│   │   └── 📄 indexer.py           # Loads OWASP docs → chunks → embeds → stores in ChromaDB
+│   │
+│   ├── 📁 tasks/                   # Celery Background Workers
+│   │   └── 📄 analysis.py          # The background task that runs the analysis pipeline
+│   │
+│   └── 📁 utils/                   # Shared Utility Functions
+│       ├── 📄 code_validator.py    # Validates Python (AST) and Java (regex) syntax
+│       └── 📄 language_detector.py # Auto-detects if submitted code is Python or Java
+│
+├── 📁 frontend/                    # 🖥️ Streamlit Developer Portal UI
+│   └── 📄 app.py                   # Full UI — tabs: Paste Code, Upload, History, Ask Assistant
+│
+├── 📁 data/                        # 📚 Local Data Storage
+│   ├── 📁 knowledge_base/          # 12 OWASP Markdown security guideline documents
+│   └── 📁 chroma_db/               # ChromaDB vector store (264 embedded chunks)
+│
+├── 📁 scripts/                     # 🔧 One-Time Setup & Utility Scripts
+│   ├── 📄 build_index.py           # Embeds knowledge_base docs into ChromaDB
+│   ├── 📄 download_kb.py           # Downloads OWASP docs if not already present
+│   └── 📄 test_rag.py              # CLI test — asks the RAG a question to verify it works
+│
+└── 📁 tests/                       # 🧪 Automated Test Suite
+    ├── 📁 unit/
+    │   ├── 📄 test_code_validator.py   # 15 tests for Python/Java syntax validation
+    │   └── 📄 test_frontend.py         # Streamlit UI startup & session state tests
+    └── 📁 integration/
+        └── 📄 test_submit_api.py       # End-to-end tests for the /submit API endpoints
+```
+
+---
+
 ## 📖 Table of Contents
 
 1. [What This Project Does](#-what-this-project-does)
