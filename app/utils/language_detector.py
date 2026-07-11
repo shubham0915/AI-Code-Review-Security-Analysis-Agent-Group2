@@ -62,6 +62,33 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
             logger.warning(f"Unsupported file extension detected: {ext}")
             return Language.unsupported
 
+    # --- NEW ML-BASED APPROACH (Google Magika) ---
+    try:
+        from magika import Magika
+        m = Magika()
+        res = m.identify_bytes(code.encode("utf-8", errors="replace"))
+        label = res.output.label.lower()
+        
+        logger.debug(f"Magika ML detected label: {label} (score: {res.output.score})")
+        
+        if label == "python":
+            return Language.python
+        if label == "java":
+            return Language.java
+        
+        # Magika sometimes classifies tiny snippets as 'txt' or 'empty'
+        # If it's highly confident it's something else (like 'javascript', 'html'), we reject it.
+        if label not in ["txt", "empty", "unknown", "python", "java"]:
+            logger.warning(f"Magika ML rejected unsupported language: {label}")
+            return Language.unsupported
+            
+    except Exception as e:
+        logger.error(f"Magika detection error: {e}")
+        
+    # --- END NEW ML-BASED APPROACH ---
+
+    """
+    # --- PREVIOUS APPROACH (Pygments + Keyword Heuristics) [COMMENTED OUT FOR TRACKING] ---
     # 2. Try pygments (the same engine VS Code uses)
     try:
         from pygments.lexers import guess_lexer
@@ -102,4 +129,15 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
 
     # 4. Default: if no keywords match and Pygments didn't catch it, it's likely unsupported text/code
     logger.warning("Could not detect any Python or Java patterns; marking as unsupported.")
+    return Language.unsupported
+    # --- END PREVIOUS APPROACH ---
+    """
+    
+    # Fallback for ML approach if Magika returns 'txt'
+    # We use a very fast naive check here just in case Magika missed a tiny snippet
+    if "public class" in code or "System.out" in code or "import java." in code:
+        return Language.java
+    if "def " in code or "import " in code or "print(" in code:
+        return Language.python
+        
     return Language.unsupported

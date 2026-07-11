@@ -53,6 +53,37 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
 
     errors: list[ValidationError] = []
 
+    # --- NEW PURE PYTHON APPROACH (javalang) ---
+    import javalang
+    try:
+        javalang.parse.parse(code)
+        return SubmissionValidationResponse(
+            valid=True,
+            errors=[],
+            detail="Java syntax is valid (parsed by javalang)."
+        )
+    except javalang.parser.JavaSyntaxError as e:
+        # e.at.position is a Position object with line and column
+        line_no = e.at.position.line if e.at and e.at.position else None
+        col_no = e.at.position.column if e.at and e.at.position else None
+        errors.append(ValidationError(
+            field="code",
+            message=f"SyntaxError at line {line_no}: {e.description}",
+            line=line_no,
+            column=col_no,
+        ))
+        return SubmissionValidationResponse(
+            valid=False,
+            errors=errors,
+            detail=f"Java parsing failed with 1 error."
+        )
+    except Exception as e:
+        logger.error(f"javalang validation error: {e}")
+        return _validate_java_heuristic(code)
+    # --- END NEW PURE PYTHON APPROACH ---
+
+    """
+    # --- PREVIOUS APPROACH (javac subprocess) [COMMENTED OUT FOR TRACKING] ---
     # ── Try javac first ───────────────────────────────────────────────────────
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -113,6 +144,8 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
     except Exception as e:
         logger.error(f"javac validation error: {e}")
         return _validate_java_heuristic(code)
+    # --- END PREVIOUS APPROACH ---
+    """
 
 
 def _get_javac_version() -> str:

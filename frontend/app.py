@@ -337,12 +337,26 @@ def _local_validate(code: str, language: str) -> dict:
             return {"valid": False, "errors": [{"field": "code", "message": str(e)}], "detail": "Validation error."}
             
     if language == "java":
-        import subprocess
-        import tempfile
         import os
         import re
-        
         errors = []
+        
+        # --- NEW PURE PYTHON APPROACH (javalang) ---
+        import javalang
+        try:
+            javalang.parse.parse(code)
+            return {"valid": True, "errors": [], "detail": "✅ Java syntax is valid (parsed by javalang)."}
+        except javalang.parser.JavaSyntaxError as e:
+            line_no = e.at.position.line if e.at and e.at.position else None
+            return {"valid": False, "errors": [{"field": "code", "message": f"SyntaxError at line {line_no}: {e.description}", "line": line_no}], "detail": "Syntax error."}
+        except Exception as e:
+            pass # Fall back to heuristic
+        # --- END NEW PURE PYTHON APPROACH ---
+
+        """
+        # --- PREVIOUS APPROACH (javac subprocess) [COMMENTED OUT FOR TRACKING] ---
+        import subprocess
+        import tempfile
         try:
             with tempfile.TemporaryDirectory() as tmp_dir:
                 class_match = re.search(r'\bpublic\s+class\s+(\w+)', code)
@@ -367,17 +381,21 @@ def _local_validate(code: str, language: str) -> dict:
                     
                 return {"valid": False, "errors": errors, "detail": f"Java compilation failed with {len(errors)} error(s)."}
         except Exception as e:
-            # Fallback to heuristic
-            if not re.search(r'\b(class|interface|enum)\s+\w+', code):
-                errors.append({"field": "code", "message": "No class, interface, or enum declaration found."})
-            if code.count("{") != code.count("}"):
-                errors.append({"field": "code", "message": f"Unbalanced braces."})
-            if code.count("(") != code.count(")"):
-                errors.append({"field": "code", "message": f"Unbalanced parentheses."})
-                
-            if errors:
-                return {"valid": False, "errors": errors, "detail": "Java heuristic pre-validation failed."}
-            return {"valid": True, "errors": [], "detail": "✅ Java heuristic pre-check passed."}
+            pass
+        # --- END PREVIOUS APPROACH ---
+        """
+
+        # Fallback to heuristic
+        if not re.search(r'\b(class|interface|enum)\s+\w+', code):
+            errors.append({"field": "code", "message": "No class, interface, or enum declaration found."})
+        if code.count("{") != code.count("}"):
+            errors.append({"field": "code", "message": f"Unbalanced braces."})
+        if code.count("(") != code.count(")"):
+            errors.append({"field": "code", "message": f"Unbalanced parentheses."})
+            
+        if errors:
+            return {"valid": False, "errors": errors, "detail": "Java heuristic pre-validation failed."}
+        return {"valid": True, "errors": [], "detail": "✅ Java heuristic pre-check passed."}
             
     return {"valid": True, "errors": [], "detail": "Language not validated (pass-through)."}
 
@@ -670,6 +688,7 @@ with tab_paste:
 with tab_upload:
     st.markdown("### Upload a Source File")
     st.markdown("Upload a `.py` or `.java` file for analysis. Max file size: **5 MB**. Max lines: **10,000**.")
+    st.markdown("<p style='color:#fbbf24;font-size:14px;margin-bottom:16px'>⚠️ <b>Important:</b> Ensure the file extension is correct and matches the programming language used inside the file.</p>", unsafe_allow_html=True)
 
     uploaded_file = st.file_uploader(
         "Drop your file here or click to browse",
