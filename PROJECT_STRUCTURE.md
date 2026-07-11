@@ -144,6 +144,16 @@ flowchart TD
 
 ---
 
+## 🏗️ Architectural Design Principles
+
+### 1. The Gatekeeper Pattern (Fail-Fast)
+We strictly enforce a **Gatekeeper Pattern** during the code submission phase. 
+- **Rule:** If submitted code is in an unsupported language (via Magika ML) or contains syntax errors (via `javalang` / `ast`), the pipeline **must halt immediately**.
+- **Reason:** We do *not* pass broken or unsupported code to the AI / LLM Agent layer (Celery queue). Sending invalid code to LLMs wastes API tokens, takes exponentially longer (10 seconds vs 1 millisecond), and severely degrades the quality of the AI's logic and security analysis.
+- **Enforcement:** Validation happens instantly in both the Streamlit UI (for UX) and the FastAPI backend (`app/utils/code_validator.py`) before tasks are queued.
+
+---
+
 ## 🔑 Quick Command Reference
 
 | Task | Command |
