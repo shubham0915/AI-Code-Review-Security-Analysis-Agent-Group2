@@ -16,7 +16,7 @@ env/
 *.env.local
 
 # Data (large files — track with DVC)
-data/chroma_db/
+data/chroma_db*/
 data/knowledge_base/*.pdf
 data/knowledge_base/*.html
 
