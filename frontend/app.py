@@ -271,12 +271,34 @@ def api_rag_query(question: str) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 def _detect_language(code: str, filename: str = "") -> str:
     import os, re
+    
+    expected_lang = None
     if filename:
         ext = os.path.splitext(filename)[1].lower()
-        if ext == ".py": return "python"
-        if ext == ".java": return "java"
-        if ext in [".js", ".ts", ".html", ".css", ".cpp", ".c", ".go", ".rs", ".rb", ".php", ".sh", ".json"]:
+        if ext == ".py": expected_lang = "python"
+        elif ext == ".java": expected_lang = "java"
+        elif ext in [".js", ".ts", ".html", ".css", ".cpp", ".c", ".go", ".rs", ".rb", ".php", ".sh", ".json"]:
             return "unsupported"
+
+    # --- ML-BASED CONTENT SNIFFING (Magika) ---
+    try:
+        from magika import Magika
+        m = Magika()
+        res = m.identify_bytes(code.encode("utf-8", errors="replace"))
+        label = res.output.label.lower()
+        
+        # Mismatch check: if it's a known language that contradicts the extension
+        if expected_lang and label not in ["txt", "empty", "unknown", expected_lang]:
+            return f"mismatch|{expected_lang}|{label}"
+            
+        if label == "python": return "python"
+        if label == "java": return "java"
+        if label not in ["txt", "empty", "unknown", "python", "java"]:
+            return "unsupported"
+    except Exception:
+        pass
+    # --- END ML SNIFFING ---
+
     
     _JAVA_KEYWORDS = [
         "public class", "private class", "protected class",
@@ -320,11 +342,17 @@ def _detect_language(code: str, filename: str = "") -> str:
 
 
 def _local_validate(code: str, language: str) -> dict:
-    if not code.strip():
-        return {"valid": False, "errors": [{"field": "code", "message": "Code is empty."}], "detail": "Empty submission."}
+    # ── Mismatch Check ────────────────────────────────────────────────────────
+    if language.startswith("mismatch|"):
+        _, expected, got = language.split("|")
+        return {
+            "valid": False, 
+            "errors": [{"field": "language", "message": f"Extension Mismatch: File claims to be {expected.upper()}, but our AI detected {got.upper()}."}], 
+            "detail": "Content Mismatch."
+        }
         
     if language == "unsupported":
-        return {"valid": False, "errors": [{"field": "language", "message": "Unsupported language detected. Please write code in Java or Python only."}], "detail": "Unsupported Language."}
+        return {"valid": False, "errors": [{"field": "language", "message": "Unsupported language detected. Please write code in Java or Python only."}], "detail": "Language unsupported."}
         
     if language == "python" or language == "auto":
         import ast
