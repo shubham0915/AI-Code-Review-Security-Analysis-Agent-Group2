@@ -677,12 +677,26 @@ with tab_paste:
             elif response.get("error"):
                 st.error(f"❌ {response['error']}")
             else:
+                import datetime
                 sid = response.get("session_id", "N/A")
                 lang = response.get("language", language_choice)
                 loc = response.get("lines_of_code", len(code_input.splitlines()))
                 est = response.get("estimated_seconds", 45)
                 msg = response.get("message", "Queued.")
                 status_val = response.get("status", "queued")
+                
+                # Save to session history
+                if "sessions" not in st.session_state:
+                    st.session_state.sessions = []
+                if not any(s.get("session_id") == sid for s in st.session_state.sessions):
+                    st.session_state.sessions.append({
+                        "session_id": sid,
+                        "status": status_val,
+                        "language": lang,
+                        "filename": "pasted_code",
+                        "lines_of_code": loc,
+                        "submitted_at": datetime.datetime.utcnow().isoformat() + "Z"
+                    })
 
                 status_badge = {
                     "queued": '<span class="badge badge-medium">⏳ Queued</span>',
@@ -815,7 +829,23 @@ with tab_upload:
                     elif response.get("error"):
                         st.error(f"❌ {response['error']}")
                     else:
+                        import datetime
                         sid = response.get("session_id", "N/A")
+                        status_val = response.get("status", "queued")
+                        
+                        # Save to session history
+                        if "sessions" not in st.session_state:
+                            st.session_state.sessions = []
+                        if not any(s.get("session_id") == sid for s in st.session_state.sessions):
+                            st.session_state.sessions.append({
+                                "session_id": sid,
+                                "status": status_val,
+                                "language": lang_to_use,
+                                "filename": uploaded_file.name,
+                                "lines_of_code": len(file_lines),
+                                "submitted_at": datetime.datetime.utcnow().isoformat() + "Z"
+                            })
+
                         st.markdown(f"""
                         <div class="glass-card glass-card-blue">
                           <h4 style="margin:0 0 10px;color:#a5b4fc">✅ File Submitted</h4>
