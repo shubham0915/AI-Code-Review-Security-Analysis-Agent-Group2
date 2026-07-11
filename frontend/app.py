@@ -550,6 +550,7 @@ with tab_paste:
         )
 
     # ── Live language detection + syntax check ──────────────────────────────
+    is_valid_code = False
     if code_input and code_input.strip():
         lines = code_input.splitlines()
         detected = _detect_language(code_input) if language_choice == "auto" else language_choice
@@ -562,6 +563,8 @@ with tab_paste:
 
         # Auto-run local syntax check and show result immediately
         live_val = _local_validate(code_input, detected)
+        is_valid_code = live_val.get("valid", False)
+        
         if live_val["valid"]:
             st.markdown(f"""
             <div style="background:rgba(16,185,129,0.1);border:1px solid #10b981;border-radius:8px;
@@ -602,7 +605,8 @@ with tab_paste:
     with col_v:
         validate_btn = st.button("✔️ Re-validate Syntax", key="validate_paste_btn")
     with col_a:
-        analyze_btn = st.button("🚀 Submit for Analysis", key="analyze_paste_btn", type="primary")
+        # Disable submission if the code is known to be invalid/unsupported
+        analyze_btn = st.button("🚀 Submit for Analysis", key="analyze_paste_btn", type="primary", disabled=not is_valid_code)
     with col_clear:
         pass
 
@@ -768,7 +772,8 @@ with tab_upload:
                 st.markdown(" ")
                 upload_col, _ = st.columns([1, 3])
                 with upload_col:
-                    upload_btn = st.button("🚀 Submit File for Analysis", key="upload_submit_btn", type="primary")
+                    is_valid_file = val_res.get("valid", False)
+                    upload_btn = st.button("🚀 Submit File for Analysis", key="upload_submit_btn", type="primary", disabled=not is_valid_file)
 
                 if upload_btn:
                     lang_to_use = language_choice if language_choice != "auto" else detected_file_lang
