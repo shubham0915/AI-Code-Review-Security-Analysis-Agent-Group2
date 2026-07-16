@@ -27,6 +27,7 @@ langchain>=0.2.9
 langchain-community>=0.2.9
 langchain-core>=0.2.20
 langgraph>=0.1.17
+nest_asyncio>=1.6.0
 
 # ── Embeddings & Retrieval ───────────────────
 sentence-transformers==3.0.1

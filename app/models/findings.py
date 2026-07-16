@@ -1,11 +1,13 @@
 """
 app/models/findings.py — Pydantic models for agent analysis findings.
 """
+
 from __future__ import annotations
 
+import uuid
 from enum import Enum
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, Any
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class Severity(str, Enum):
@@ -31,15 +33,32 @@ class OwaspCategory(str, Enum):
 
 class CodeSmell(BaseModel):
     """A single code quality finding from the Code Analysis Agent."""
-    id: str
-    type: str = Field(..., description="Finding type, e.g. code_smell, anti_pattern, complexity")
-    category: str = Field(..., description="Specific category, e.g. god_class, long_method")
-    severity: Severity
+
+    # id and category are auto-generated if the LLM omits them
+    id: Optional[str] = None
+    type: str = "code_smell"
+    category: Optional[str] = None
+    severity: Severity = Severity.medium
     line_start: Optional[int] = None
     line_end: Optional[int] = None
-    description: str
+    description: str = ""
     snippet: Optional[str] = None
     suggestion: Optional[str] = None
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def normalize_severity(cls, v: Any):
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
+    @model_validator(mode="after")
+    def set_defaults(self):
+        if not self.id:
+            self.id = str(uuid.uuid4())[:8]
+        if not self.category:
+            self.category = self.type
+        return self
 
 
 class ComplexityScore(BaseModel):
@@ -52,34 +71,98 @@ class ComplexityScore(BaseModel):
 
 class CodeAnalysisResult(BaseModel):
     """Output from the Code Analysis Agent."""
+
     agent: str = "CodeAnalysisAgent"
     findings: list[CodeSmell] = []
     complexity_score: ComplexityScore = ComplexityScore()
-    quality_grade: str = "N/A"   # A-F
-    quality_score: int = 0       # 0-100
+    quality_grade: str = "N/A"  # A-F
+    quality_score: int = 0  # 0-100
     summary: str = ""
 
 
 class SecurityVulnerability(BaseModel):
     """A single security vulnerability finding."""
-    id: str
+
+    # id is auto-generated if the LLM omits it
+    id: Optional[str] = None
     owasp_category: Optional[OwaspCategory] = None
     cwe_id: Optional[str] = None
-    severity: Severity
+    severity: Severity = Severity.medium
     cvss_score: Optional[float] = Field(None, ge=0.0, le=10.0)
     line: Optional[int] = None
     line_end: Optional[int] = None
-    description: str
+    title: Optional[str] = None
+    description: str = ""
     evidence: Optional[str] = None
-    confidence: str = "medium"   # high | medium | low
-    tool_source: Optional[str] = None   # bandit | semgrep | llm
+    confidence: str = "medium"  # high | medium | low
+    tool_source: Optional[str] = None  # bandit | semgrep | llm
+    remediation: Optional[str] = None
+    impact: Optional[str] = None
+
+    @field_validator("severity", mode="before")
+    @classmethod
+    def normalize_severity(cls, v: Any):
+        if isinstance(v, str):
+            return v.lower()
+        return v
+
+    @field_validator("cwe_id", mode="before")
+    @classmethod
+    def coerce_cwe_id(cls, v: Any):
+        """LLMs sometimes return CWE as integer (89) instead of string ('89')."""
+        if v is not None:
+            return str(v)
+        return v
+
+    @field_validator("owasp_category", mode="before")
+    @classmethod
+    def normalize_owasp(cls, v: Any):
+        """Accept 'A03', 'A3', 'A1: Injection', full form, etc."""
+        if v is None:
+            return v
+        if not isinstance(v, str):
+            return None  # discard non-strings
+        # Map by prefix — handle both zero-padded (A01) and unpadded (A1)
+        owasp_map = [
+            (["A01", "A1"], OwaspCategory.A01),
+            (["A02", "A2"], OwaspCategory.A02),
+            (["A03", "A3"], OwaspCategory.A03),
+            (["A04", "A4"], OwaspCategory.A04),
+            (["A05", "A5"], OwaspCategory.A05),
+            (["A06", "A6"], OwaspCategory.A06),
+            (["A07", "A7"], OwaspCategory.A07),
+            (["A08", "A8"], OwaspCategory.A08),
+            (["A09", "A9"], OwaspCategory.A09),
+            (["A10"], OwaspCategory.A10),
+        ]
+        for prefixes, category in owasp_map:
+            if any(v.upper().startswith(p) for p in prefixes):
+                return category.value
+        # Try keyword matching as last resort
+        v_lower = v.lower()
+        if "injection" in v_lower:
+            return OwaspCategory.A03.value
+        if "access control" in v_lower or "authorization" in v_lower:
+            return OwaspCategory.A01.value
+        if "crypto" in v_lower:
+            return OwaspCategory.A02.value
+        if "auth" in v_lower:
+            return OwaspCategory.A07.value
+        return None  # discard unrecognized values
+
+    @model_validator(mode="after")
+    def set_defaults(self):
+        if not self.id:
+            self.id = str(uuid.uuid4())[:8]
+        return self
 
 
 class SecurityAnalysisResult(BaseModel):
     """Output from the Security Vulnerability Agent."""
+
     agent: str = "SecurityVulnerabilityAgent"
     vulnerabilities: list[SecurityVulnerability] = []
-    security_score: int = 100       # 0-100 (100 = no issues)
+    security_score: int = 100  # 0-100 (100 = no issues)
     critical_count: int = 0
     high_count: int = 0
     medium_count: int = 0
@@ -89,16 +172,18 @@ class SecurityAnalysisResult(BaseModel):
 
 class Remediation(BaseModel):
     """A fix recommendation linked to a finding."""
+
     finding_id: str
     recommendation: str
     corrected_code: Optional[str] = None
     explanation: str
     references: list[str] = []
-    effort: str = "medium"   # low | medium | high
+    effort: str = "medium"  # low | medium | high
 
 
 class RemediationResult(BaseModel):
     """Output from the Remediation Agent."""
+
     agent: str = "RemediationAgent"
     remediations: list[Remediation] = []
     summary: str = ""
@@ -114,11 +199,12 @@ class OverallRiskRating(str, Enum):
 
 class PRSummaryResult(BaseModel):
     """Structured PR review summary from the PR Summary Agent."""
+
     agent: str = "PRSummaryAgent"
     overall_risk: OverallRiskRating = OverallRiskRating.clean
     security_score: int = 100
     quality_score: int = 100
-    composite_risk_score: int = 0   # 0-100
+    composite_risk_score: int = 0  # 0-100
     total_findings: int = 0
     markdown_review: str = ""
     remediation_priority_list: list[str] = []
@@ -127,6 +213,7 @@ class PRSummaryResult(BaseModel):
 
 class FullAnalysisResult(BaseModel):
     """Combined output from the entire multi-agent pipeline."""
+
     session_id: str
     language: str
     filename: Optional[str] = None

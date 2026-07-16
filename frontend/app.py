@@ -11,18 +11,11 @@ Features:
 """
 from __future__ import annotations
 
-import time
-import json
 import uuid
-import ast
 from datetime import datetime
-from typing import Optional
-# pyrefly: ignore [missing-import]
 import streamlit as st
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Page config — MUST be the very first Streamlit call
-# ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Code Review Agent",
     page_icon="🔍",
@@ -37,9 +30,7 @@ st.set_page_config(
 
 API_BASE = "http://localhost:8000"
 
-# ─────────────────────────────────────────────────────────────────────────────
 # CSS — Dark glassmorphism premium theme
-# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
@@ -182,21 +173,16 @@ code { background: rgba(99,102,241,0.12) !important; color: #c4b5fd !important; 
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Session state init
-# ─────────────────────────────────────────────────────────────────────────────
 if "sessions" not in st.session_state:
     st.session_state.sessions = []
 if "api_mode" not in st.session_state:
     st.session_state.api_mode = "checking"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # API + standalone helpers
-# ─────────────────────────────────────────────────────────────────────────────
 def check_api() -> bool:
     try:
-        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.get(f"{API_BASE}/health", timeout=2)
         return r.status_code == 200
@@ -206,7 +192,6 @@ def check_api() -> bool:
 
 def api_validate(code: str, language: str) -> dict:
     try:
-        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.post(f"{API_BASE}/api/v1/submit/validate",
                        json={"code": code, "language": language}, timeout=10)
@@ -217,7 +202,6 @@ def api_validate(code: str, language: str) -> dict:
 
 def api_submit_paste(code: str, language: str, filename: str = "") -> dict:
     try:
-        # pyrefly: ignore [missing-import]
         import httpx
         payload = {"code": code, "language": language}
         if filename:
@@ -230,7 +214,6 @@ def api_submit_paste(code: str, language: str, filename: str = "") -> dict:
 
 def api_submit_file(file_bytes: bytes, filename: str, language: str) -> dict:
     try:
-        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.post(
             f"{API_BASE}/api/v1/submit/file",
@@ -245,7 +228,6 @@ def api_submit_file(file_bytes: bytes, filename: str, language: str) -> dict:
 
 def api_status(session_id: str) -> dict:
     try:
-        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.get(f"{API_BASE}/api/v1/status/{session_id}", timeout=5)
         return r.json()
@@ -258,7 +240,6 @@ def api_status(session_id: str) -> dict:
 
 def api_rag_query(question: str) -> dict:
     try:
-        # pyrefly: ignore [missing-import]
         import httpx
         r = httpx.post(f"{API_BASE}/api/v1/rag/query", json={"question": question, "top_k": 3}, timeout=120)
         return r.json()
@@ -266,11 +247,9 @@ def api_rag_query(question: str) -> dict:
         return {"error": str(e)}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Local (no-API) validators & submit — runs fully in-browser
-# ─────────────────────────────────────────────────────────────────────────────
 def _detect_language(code: str, filename: str = "") -> str:
-    import os, re
+    import os
     
     expected_lang = None
     if filename:
@@ -342,7 +321,6 @@ def _detect_language(code: str, filename: str = "") -> str:
 
 
 def _local_validate(code: str, language: str) -> dict:
-    # ── Mismatch Check ────────────────────────────────────────────────────────
     if language.startswith("mismatch|"):
         _, expected, got = language.split("|")
         return {
@@ -365,7 +343,6 @@ def _local_validate(code: str, language: str) -> dict:
             return {"valid": False, "errors": [{"field": "code", "message": str(e)}], "detail": "Validation error."}
             
     if language == "java":
-        import os
         import re
         errors = []
         
@@ -377,7 +354,7 @@ def _local_validate(code: str, language: str) -> dict:
         except javalang.parser.JavaSyntaxError as e:
             line_no = e.at.position.line if e.at and e.at.position else None
             return {"valid": False, "errors": [{"field": "code", "message": f"SyntaxError at line {line_no}: {e.description}", "line": line_no}], "detail": "Syntax error."}
-        except Exception as e:
+        except Exception:
             pass # Fall back to heuristic
         # --- END NEW PURE PYTHON APPROACH ---
 
@@ -417,9 +394,9 @@ def _local_validate(code: str, language: str) -> dict:
         if not re.search(r'\b(class|interface|enum)\s+\w+', code):
             errors.append({"field": "code", "message": "No class, interface, or enum declaration found."})
         if code.count("{") != code.count("}"):
-            errors.append({"field": "code", "message": f"Unbalanced braces."})
+            errors.append({"field": "code", "message": "Unbalanced braces."})
         if code.count("(") != code.count(")"):
-            errors.append({"field": "code", "message": f"Unbalanced parentheses."})
+            errors.append({"field": "code", "message": "Unbalanced parentheses."})
             
         if errors:
             return {"valid": False, "errors": errors, "detail": "Java heuristic pre-validation failed."}
@@ -455,9 +432,7 @@ def _local_submit(code: str, language: str, filename: str = "") -> dict:
     return session
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
-# ─────────────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🔍 AI Code Review Agent")
     st.markdown("*Group 2 — Milestone 1*")
@@ -509,9 +484,7 @@ with st.sidebar:
     st.caption("100% Open-Source · Local · Apple M4")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Header
-# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="main-header">
   <h1>🔍 AI Code Review & Security Analysis Agent</h1>
@@ -525,16 +498,86 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Mode banner
+# mode banner
 mode = st.session_state.api_mode
 if mode == "local":
     st.info("⚡ **Local Mode** — Validation runs in-browser. Start `uvicorn app.main:app --reload` for the full API experience.", icon="ℹ️")
 
 st.markdown("---")
 
-# ─────────────────────────────────────────────────────────────────────────────
+def display_analysis_report(res: dict):
+    if not res:
+        st.warning("No result available.")
+        return
+    
+    code_res = res.get("code_analysis") or {}
+    sec_res = res.get("security_analysis") or {}
+    
+    tab_dash, tab_code, tab_sec, tab_raw = st.tabs(["📊 Dashboard", "📝 Code Quality", "🛡️ Security", "⚙️ Raw Data"])
+    
+    with tab_dash:
+        st.markdown("### 📊 Overview")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Quality Score", code_res.get("quality_score", "N/A"))
+        with col2:
+            grade = code_res.get("quality_grade", "N/A")
+            st.metric("Quality Grade", grade)
+        with col3:
+            st.metric("Security Score", sec_res.get("security_score", "N/A"))
+            
+        st.markdown("#### Summaries")
+        if code_res.get("summary"):
+            st.info(f"**Code Quality**: {code_res['summary']}")
+        if sec_res.get("summary"):
+            st.warning(f"**Security**: {sec_res['summary']}")
+            
+    with tab_code:
+        st.markdown("### 📝 Code Quality Findings")
+        comp = code_res.get("complexity_score", {})
+        if comp:
+            ccol1, ccol2, ccol3, ccol4 = st.columns(4)
+            ccol1.metric("Cyclomatic", comp.get("cyclomatic", "N/A"))
+            ccol2.metric("Cognitive", comp.get("cognitive", "N/A"))
+            ccol3.metric("Lines of Code", comp.get("lines_of_code", "N/A"))
+            ccol4.metric("Duplication %", f"{comp.get('duplication_pct', 'N/A')}%")
+        
+        findings = code_res.get("findings", [])
+        if not findings:
+            st.success("No code smells or design issues found!")
+        else:
+            for f in findings:
+                with st.expander(f"{f.get('type', 'Finding')} - {f.get('title', 'Unknown')} (Severity: {f.get('severity', 'N/A')})"):
+                    st.write(f"**Description:** {f.get('description', '')}")
+                    if f.get('line_start') and f.get('line_end'):
+                        st.write(f"**Lines:** {f['line_start']} to {f['line_end']}")
+                    if f.get('suggestion'):
+                        st.write(f"**Suggestion:** {f['suggestion']}")
+                        
+    with tab_sec:
+        st.markdown("### 🛡️ Security Vulnerabilities")
+        sec_findings = sec_res.get("vulnerabilities", [])
+        if not sec_findings:
+            st.success("No security vulnerabilities detected!")
+        else:
+            for v in sec_findings:
+                sev = str(v.get('severity', 'Unknown')).upper()
+                icon = "🔥" if sev in ["CRITICAL", "HIGH"] else "⚠️"
+                with st.expander(f"{icon} [{v.get('cwe_id', 'CWE-Unknown')}] {v.get('title', 'Vulnerability')} (Severity: {sev})"):
+                    st.write(f"**OWASP Category:** {v.get('owasp_category', '')}")
+                    st.write(f"**Description:** {v.get('description', '')}")
+                    st.write(f"**Impact:** {v.get('impact', '')}")
+                    if v.get('line_start') and v.get('line_end'):
+                        st.write(f"**Lines:** {v['line_start']} to {v['line_end']}")
+                    if v.get('evidence'):
+                        st.write(f"**Evidence:** {v['evidence']}")
+                    if v.get('remediation'):
+                        st.write(f"**Remediation:** {v['remediation']}")
+                        
+    with tab_raw:
+        st.json(res)
+
 # Tabs
-# ─────────────────────────────────────────────────────────────────────────────
 tab_paste, tab_upload, tab_history, tab_chat, tab_about = st.tabs([
     "📋  Paste Code",
     "📁  Upload File",
@@ -553,7 +596,6 @@ with tab_paste:
     # Code editor — try streamlit-ace, fallback to text_area
     editor_lang = "python" if language_choice in ["python", "auto"] else "java"
     try:
-        # pyrefly: ignore [missing-import]
         from streamlit_ace import st_ace
         code_input = st_ace(
             placeholder="# Paste your Python or Java code here...\n\ndef example():\n    user_id = input('Enter ID: ')\n    query = f'SELECT * FROM users WHERE id={user_id}'  # SQL injection!",
@@ -577,7 +619,6 @@ with tab_paste:
             label_visibility="collapsed",
         )
 
-    # ── Live language detection + syntax check ──────────────────────────────
     is_valid_code = False
     if code_input and code_input.strip():
         lines = code_input.splitlines()
@@ -626,7 +667,6 @@ with tab_paste:
               </div>""", unsafe_allow_html=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
-    # ── Action buttons ────────────────────────────────────────────────────────
     st.markdown(" ")
     col_v, col_a, col_clear = st.columns([1.2, 1.5, 4])
 
@@ -756,14 +796,12 @@ with tab_upload:
             file_size_kb = len(raw_bytes) / 1024
             detected_file_lang = _detect_language(file_code, uploaded_file.name)
 
-            # ── File info metrics ─────────────────────────────────────────────
             col_fi1, col_fi2, col_fi3, col_fi4 = st.columns(4)
             col_fi1.metric("File", uploaded_file.name)
             col_fi2.metric("Size", f"{file_size_kb:.1f} KB")
             col_fi3.metric("Lines", len(file_lines))
             col_fi4.metric("Detected Language", detected_file_lang.upper())
 
-            # ── Live syntax validation result ─────────────────────────────────
             val_res = _local_validate(file_code, detected_file_lang)
             if val_res["valid"]:
                 st.markdown(f"""
@@ -918,18 +956,16 @@ with tab_history:
                 if mode == "api":
                     col_act1, col_act2 = st.columns(2)
                     with col_act1:
-                        if st.button(f"🔄 Refresh Status", key=f"refresh_{i}"):
+                        if st.button("🔄 Refresh Status", key=f"refresh_{i}"):
                             fresh = api_status(sid)
                             st.json(fresh)
                     with col_act2:
-                        # Only show "View Full Report" button
-                        if st.button(f"📄 View Full Report", key=f"report_{i}"):
+                        if st.button("📄 View Full Report", key=f"report_{i}"):
                             try:
-                                # pyrefly: ignore [missing-import]
                                 import httpx
                                 res = httpx.get(f"{API_BASE}/api/v1/result/{sid}", timeout=5).json()
                                 st.markdown("##### Analysis Result")
-                                st.json(res)
+                                display_analysis_report(res)
                             except Exception as e:
                                 st.error(f"Could not fetch result: {e}")
     else:
@@ -959,11 +995,10 @@ with tab_history:
         with col_lu2:
             if st.button("📄 View Full Report", key="lookup_report_btn"):
                 try:
-                    # pyrefly: ignore [missing-import]
                     import httpx
                     res = httpx.get(f"{API_BASE}/api/v1/result/{manual_sid.strip()}", timeout=5).json()
                     st.markdown("##### Analysis Result")
-                    st.json(res)
+                    display_analysis_report(res)
                 except Exception as e:
                     st.error(f"Could not fetch result: {e}")
 
