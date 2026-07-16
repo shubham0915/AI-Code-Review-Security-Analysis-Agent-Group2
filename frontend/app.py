@@ -958,14 +958,30 @@ with tab_history:
                     with col_act1:
                         if st.button("🔄 Refresh Status", key=f"refresh_{i}"):
                             fresh = api_status(sid)
-                            st.json(fresh)
+                            # ✅ Update the local session state so the badge refreshes
+                            new_status = fresh.get("status", status)
+                            st.session_state.sessions[i]["status"] = new_status
+                            st.session_state.sessions[i]["current_stage"] = fresh.get("current_stage", stage)
+                            if new_status == "completed":
+                                st.success(f"✅ Analysis completed! Click **View Full Report** to see results.")
+                            elif new_status == "running":
+                                st.info(f"🔵 Still running... stage: {fresh.get('current_stage', '?')}")
+                            elif new_status == "failed":
+                                st.error(f"❌ Analysis failed: {fresh.get('error_message', 'Unknown error')}")
+                            else:
+                                st.warning(f"⏳ Still queued — check the Celery worker is running.")
+                            st.rerun()
                     with col_act2:
                         if st.button("📄 View Full Report", key=f"report_{i}"):
                             try:
                                 import httpx
                                 res = httpx.get(f"{API_BASE}/api/v1/result/{sid}", timeout=5).json()
-                                st.markdown("##### Analysis Result")
-                                display_analysis_report(res)
+                                if res.get("error") and not res.get("code_analysis") and not res.get("security_analysis"):
+                                    st.warning(f"⚠️ Result stored but pipeline may not have completed: {res.get('error')}")
+                                    st.json(res)
+                                else:
+                                    st.markdown("##### Analysis Result")
+                                    display_analysis_report(res)
                             except Exception as e:
                                 st.error(f"Could not fetch result: {e}")
     else:
