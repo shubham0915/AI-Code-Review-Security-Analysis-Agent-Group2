@@ -16,12 +16,19 @@ from loguru import logger
 from app.celery_app import celery_app
 from app.config import get_settings
 
+# Import at module level so it's loaded ONCE when the worker starts,
+# not re-imported on every task execution (which caused slow cold starts).
+from app.agents.graph import analysis_graph
+
+print("[CELERY WORKER] analysis_graph imported and ready.", flush=True)
+
 
 @celery_app.task(
     name="app.tasks.analysis.run_full_analysis",
     bind=True,
-    max_retries=2,
-    soft_time_limit=300,   # 5 minutes
+    max_retries=1,
+    soft_time_limit=600,   # 10 minutes — Ollama can be slow
+    time_limit=660,        # hard kill at 11 minutes
 )
 def run_full_analysis(self, session_id: str) -> dict:
     """
@@ -57,13 +64,7 @@ def run_full_analysis(self, session_id: str) -> dict:
         logger.info(f"Analysis started: {session_id} | lang={language}")
         print(f"[CELERY] Analysis started: {session_id} | lang={language}", flush=True)
 
-        # ---- Patch asyncio for Celery compatibility ----
-        # asyncio.run() fails inside Celery workers that already have an event loop.
-        # We use nest_asyncio as a fallback.
-        import asyncio
-        from app.agents.graph import analysis_graph
-
-        # Run the agent pipeline
+        # ---- Run the async agent pipeline synchronously ----
         initial_state = {
             "session_id": session_id,
             "code": code,
@@ -73,25 +74,16 @@ def run_full_analysis(self, session_id: str) -> dict:
             "security_analysis_result": None
         }
         print(f"[CELERY] Invoking LangGraph pipeline...", flush=True)
-        
+
+        import asyncio
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We are inside an already-running event loop (shouldn't happen in
-                # a standard Celery worker, but handle it defensively)
-                import nest_asyncio
-                nest_asyncio.apply()
-                final_state = loop.run_until_complete(analysis_graph.ainvoke(initial_state))
-            else:
-                final_state = asyncio.run(analysis_graph.ainvoke(initial_state))
-        except RuntimeError:
-            # No running loop at all — create a new one
+            # Create a brand new event loop — safest approach in a forked process
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            try:
-                final_state = loop.run_until_complete(analysis_graph.ainvoke(initial_state))
-            finally:
-                loop.close()
+            final_state = loop.run_until_complete(analysis_graph.ainvoke(initial_state))
+        finally:
+            loop.close()
+            asyncio.set_event_loop(None)
         
         print(f"[CELERY] LangGraph pipeline completed. Extracting results...", flush=True)
         
