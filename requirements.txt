@@ -60,6 +60,9 @@ prometheus-client==0.20.0
 structlog==24.2.0
 loguru==0.7.2
 logfire[fastapi,celery,redis,system-metrics,httpx]
+# Optional observability — install manually to enable LangChain tracing.
+# Import is guarded in app/celery_app.py so missing this never crashes CI.
+# openinference-instrumentation-langchain>=0.1.0
 
 # ── RAG Evaluation ───────────────────────────
 ragas==0.1.16

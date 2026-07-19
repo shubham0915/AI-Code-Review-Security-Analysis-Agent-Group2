@@ -10,11 +10,26 @@ from app.config import get_settings
 settings = get_settings()
 
 import logfire
-from openinference.instrumentation.langchain import LangChainInstrumentor
+
+# openinference is an optional observability dependency.
+# Guard the import so CI (and any environment without it) doesn't crash.
+try:
+    from openinference.instrumentation.langchain import LangChainInstrumentor as _LangChainInstrumentor
+except ImportError:
+    _LangChainInstrumentor = None
 
 logfire.configure()
 logfire.instrument_celery()
-LangChainInstrumentor().instrument()
+
+if _LangChainInstrumentor is not None:
+    try:
+        _LangChainInstrumentor().instrument()
+    except Exception as _e:
+        import logging
+        logging.getLogger(__name__).warning("LangChain instrumentation disabled: %s", _e)
+else:
+    import logging
+    logging.getLogger(__name__).info("openinference not installed; skipping LangChain instrumentation")
 
 celery_app = Celery(
     "ai_code_review",
