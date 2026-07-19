@@ -1,7 +1,7 @@
 """
 tests/unit/test_code_validator.py — Unit tests for code validation logic.
 """
-import pytest
+
 from app.models.session import Language
 from app.utils.code_validator import validate_code
 
@@ -10,7 +10,6 @@ from app.utils.code_validator import validate_code
 # Python validation
 # ─────────────────────────────────────────────────────────────────────────────
 class TestPythonValidator:
-
     def test_valid_python_simple(self):
         code = "x = 1 + 2\nprint(x)"
         result = validate_code(code, Language.python)
@@ -65,7 +64,6 @@ def get_env(key: str, default: Optional[str] = None) -> Optional[str]:
 # Java validation
 # ─────────────────────────────────────────────────────────────────────────────
 class TestJavaValidator:
-
     def test_valid_java_simple(self):
         code = """
 public class HelloWorld {
@@ -116,25 +114,28 @@ public class Example {
 # Language detection
 # ─────────────────────────────────────────────────────────────────────────────
 class TestLanguageDetector:
-
     def test_detect_python_by_extension(self):
         from app.utils.language_detector import detect_language
+
         lang = detect_language("x = 1", "myfile.py")
         assert lang == Language.python
 
     def test_detect_java_by_extension(self):
         from app.utils.language_detector import detect_language
+
         lang = detect_language("public class Foo {}", "Foo.java")
         assert lang == Language.java
 
     def test_detect_python_by_keywords(self):
         from app.utils.language_detector import detect_language
+
         code = "def hello():\n    print('Hi')\n    return True"
         lang = detect_language(code, None)
         assert lang == Language.python
 
     def test_detect_java_by_keywords(self):
         from app.utils.language_detector import detect_language
+
         code = "public class Test { public static void main(String[] args) {} }"
         lang = detect_language(code, None)
         assert lang == Language.java

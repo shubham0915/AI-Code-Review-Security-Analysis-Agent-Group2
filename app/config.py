@@ -2,6 +2,7 @@
 app/config.py — Centralised settings loader using pydantic-settings.
 All values fall back to .env file, then to hardcoded defaults.
 """
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
@@ -21,19 +22,16 @@ class Settings(BaseSettings):
     app_secret_key: str = "dev-secret-key-change-in-production"
     log_level: str = "INFO"
 
-    # ── LLM Provider toggle ──────────────────────────────────────
     # "gemini" → uses Gemini API (fast, free tier, needs internet)
     # "ollama" → uses local Ollama (private, offline, needs install)
     llm_provider: str = "gemini"
 
-    # ── Gemini API ───────────────────────────────────────────────
     gemini_api_key: str = ""
     gemini_primary_model: str = "gemini-2.0-flash"
     gemini_fast_model: str = "gemini-2.0-flash"
     gemini_embed_model: str = "models/text-embedding-004"
     gemini_temperature: float = 0.1
 
-    # ── Ollama (local, fallback) ─────────────────────────────────
     ollama_base_url: str = "http://localhost:11434"
     ollama_primary_model: str = "codestral"
     ollama_fast_model: str = "qwen2.5-coder:7b"

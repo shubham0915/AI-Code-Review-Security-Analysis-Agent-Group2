@@ -5,25 +5,24 @@ Python: uses ast.parse (standard library, zero overhead)
 Java:   uses heuristic brace/bracket balance + keyword checks
         (full javac validation requires JDK; we do a lightweight pre-check)
 """
+
 from __future__ import annotations
 
 import ast
-import os
 import re
-from typing import Optional
 
 from loguru import logger
 
 from app.models.session import Language, SubmissionValidationResponse, ValidationError
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Python Validator
-# ─────────────────────────────────────────────────────────────────────────────
 def _validate_python(code: str) -> SubmissionValidationResponse:
     try:
         ast.parse(code)
-        return SubmissionValidationResponse(valid=True, errors=[], detail="Python syntax is valid.")
+        return SubmissionValidationResponse(
+            valid=True, errors=[], detail="Python syntax is valid."
+        )
     except SyntaxError as e:
         error = ValidationError(
             field="code",
@@ -39,43 +38,38 @@ def _validate_python(code: str) -> SubmissionValidationResponse:
         return SubmissionValidationResponse(valid=False, errors=[error])
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Java Validator — uses javac for exact line/column error reporting
-# ─────────────────────────────────────────────────────────────────────────────
 def _validate_java(code: str) -> SubmissionValidationResponse:
     """
     Validates Java source code by compiling it with javac.
     Returns exact line numbers, column positions, and error messages.
     Falls back to heuristic checks if javac is not available.
     """
-    import subprocess
-    import tempfile
 
     errors: list[ValidationError] = []
 
     # --- NEW PURE PYTHON APPROACH (javalang) ---
     import javalang
+
     try:
         javalang.parse.parse(code)
         return SubmissionValidationResponse(
-            valid=True,
-            errors=[],
-            detail="Java syntax is valid (parsed by javalang)."
+            valid=True, errors=[], detail="Java syntax is valid (parsed by javalang)."
         )
     except javalang.parser.JavaSyntaxError as e:
         # e.at.position is a Position object with line and column
         line_no = e.at.position.line if e.at and e.at.position else None
         col_no = e.at.position.column if e.at and e.at.position else None
-        errors.append(ValidationError(
-            field="code",
-            message=f"SyntaxError at line {line_no}: {e.description}",
-            line=line_no,
-            column=col_no,
-        ))
+        errors.append(
+            ValidationError(
+                field="code",
+                message=f"SyntaxError at line {line_no}: {e.description}",
+                line=line_no,
+                column=col_no,
+            )
+        )
         return SubmissionValidationResponse(
-            valid=False,
-            errors=errors,
-            detail=f"Java parsing failed with 1 error."
+            valid=False, errors=errors, detail="Java parsing failed with 1 error."
         )
     except Exception as e:
         logger.error(f"javalang validation error: {e}")
@@ -84,7 +78,6 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
 
     """
     # --- PREVIOUS APPROACH (javac subprocess) [COMMENTED OUT FOR TRACKING] ---
-    # ── Try javac first ───────────────────────────────────────────────────────
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
             # Determine class name from code (javac requires filename == public class name)
@@ -151,8 +144,11 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
 def _get_javac_version() -> str:
     """Return the javac version string for display."""
     import subprocess
+
     try:
-        r = subprocess.run(["javac", "-version"], capture_output=True, text=True, timeout=3)
+        r = subprocess.run(
+            ["javac", "-version"], capture_output=True, text=True, timeout=3
+        )
         return (r.stdout or r.stderr).strip()
     except Exception:
         return "unknown"
@@ -162,40 +158,46 @@ def _validate_java_heuristic(code: str) -> SubmissionValidationResponse:
     """Lightweight fallback Java validator used when javac is unavailable."""
     errors: list[ValidationError] = []
 
-    if not re.search(r'\b(class|interface|enum)\s+\w+', code):
-        errors.append(ValidationError(
-            field="code",
-            message="No class, interface, or enum declaration found. Is this valid Java?",
-        ))
+    if not re.search(r"\b(class|interface|enum)\s+\w+", code):
+        errors.append(
+            ValidationError(
+                field="code",
+                message="No class, interface, or enum declaration found. Is this valid Java?",
+            )
+        )
 
     open_braces = code.count("{")
     close_braces = code.count("}")
     if open_braces != close_braces:
-        errors.append(ValidationError(
-            field="code",
-            message=f"Unbalanced braces: {open_braces} opening '{{' vs {close_braces} closing '}}'.",
-        ))
+        errors.append(
+            ValidationError(
+                field="code",
+                message=f"Unbalanced braces: {open_braces} opening '{{' vs {close_braces} closing '}}'.",
+            )
+        )
 
     open_parens = code.count("(")
     close_parens = code.count(")")
     if open_parens != close_parens:
-        errors.append(ValidationError(
-            field="code",
-            message=f"Unbalanced parentheses: {open_parens} '(' vs {close_parens} ')'.",
-        ))
+        errors.append(
+            ValidationError(
+                field="code",
+                message=f"Unbalanced parentheses: {open_parens} '(' vs {close_parens} ')'.",
+            )
+        )
 
     if errors:
         return SubmissionValidationResponse(
             valid=False, errors=errors, detail="Java heuristic pre-validation failed."
         )
     return SubmissionValidationResponse(
-        valid=True, errors=[], detail="Java heuristic pre-check passed (javac unavailable)."
+        valid=True,
+        errors=[],
+        detail="Java heuristic pre-check passed (javac unavailable).",
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Public entry point
-# ─────────────────────────────────────────────────────────────────────────────
 def validate_code(code: str, language: Language) -> SubmissionValidationResponse:
     """
     Validate source code syntax.
@@ -221,7 +223,12 @@ def validate_code(code: str, language: Language) -> SubmissionValidationResponse
     elif language == Language.unsupported:
         result = SubmissionValidationResponse(
             valid=False,
-            errors=[ValidationError(field="language", message="Unsupported language detected. Please write code in Java or Python only.")],
+            errors=[
+                ValidationError(
+                    field="language",
+                    message="Unsupported language detected. Please write code in Java or Python only.",
+                )
+            ],
             detail="Unsupported Language.",
         )
     else:

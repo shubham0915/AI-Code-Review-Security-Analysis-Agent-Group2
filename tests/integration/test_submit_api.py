@@ -3,8 +3,8 @@ tests/integration/test_submit_api.py — Integration tests for the Code Submissi
 
 Requires: FastAPI TestClient (no live Redis needed — Redis calls are mocked).
 """
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 # Patch Redis before importing app
@@ -24,7 +24,6 @@ client = TestClient(app)
 # Health
 # ─────────────────────────────────────────────────────────────────────────────
 class TestHealthEndpoints:
-
     def test_liveness(self):
         resp = client.get("/health")
         assert resp.status_code == 200
@@ -35,7 +34,6 @@ class TestHealthEndpoints:
 # Submit paste
 # ─────────────────────────────────────────────────────────────────────────────
 class TestSubmitPaste:
-
     VALID_PYTHON = "def add(a, b):\n    return a + b\n"
     VALID_JAVA = """
 public class Calculator {
@@ -108,7 +106,6 @@ public class Calculator {
 # Validate endpoint
 # ─────────────────────────────────────────────────────────────────────────────
 class TestValidateEndpoint:
-
     def test_validate_valid_python(self):
         payload = {"code": "x = 1 + 2\nprint(x)", "language": "python"}
         resp = client.post("/api/v1/submit/validate", json=payload)
@@ -135,7 +132,6 @@ class TestValidateEndpoint:
 # File upload
 # ─────────────────────────────────────────────────────────────────────────────
 class TestFileUpload:
-
     @patch("app.cache.redis_cache.get_redis_client")
     def test_upload_python_file(self, mock_get_redis):
         mock_r = AsyncMock()

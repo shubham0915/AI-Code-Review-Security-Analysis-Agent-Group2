@@ -55,3 +55,7 @@ grafana_data/
 # Local-only folders (not part of any milestone, do not push)
 others/
 .pytest_cache/
+dump.rdb
+implementation_plan.md
+task.md
+walkthrough.md

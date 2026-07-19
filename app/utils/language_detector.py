@@ -7,6 +7,7 @@ Strategy (in order of priority):
   3. Heuristic keyword scan (Java-biased on ties — Java keywords are more specific)
   4. Default: python
 """
+
 from __future__ import annotations
 
 import os
@@ -18,32 +19,53 @@ from app.models.session import Language
 
 
 # Java-specific keywords — these are VERY unlikely to appear in Python code
-_JAVA_KEYWORDS = frozenset([
-    "public class", "private class", "protected class",
-    "public static void main", "import java.", "import javax.",
-    "System.out.", "System.err.", "System.in.",
-    "extends ", "implements ", "new ArrayList", "new HashMap",
-    "new LinkedList", "new HashSet",
-    "@Override", "@NotNull", "@Nullable",
-    "throws ", "catch (", "finally {",
-    "String[] args", "void main", "public static",
-    "private static", "protected static",
-])
+_JAVA_KEYWORDS = frozenset(
+    [
+        "public class",
+        "private class",
+        "protected class",
+        "public static void main",
+        "import java.",
+        "import javax.",
+        "System.out.",
+        "System.err.",
+        "System.in.",
+        "extends ",
+        "implements ",
+        "new ArrayList",
+        "new HashMap",
+        "new LinkedList",
+        "new HashSet",
+        "@Override",
+        "@NotNull",
+        "@Nullable",
+        "throws ",
+        "catch (",
+        "finally {",
+        "String[] args",
+        "void main",
+        "public static",
+        "private static",
+        "protected static",
+    ]
+)
 
 # Python-specific patterns — deliberately avoiding 'import ' (too generic)
-_PYTHON_KEYWORDS = frozenset([
-    "def ",           # Python function definitions
-    "elif ",          # Python-specific (Java uses 'else if')
-    "__init__",       # Python class constructor magic method
-    "self.",          # Python instance method first argument
-    "lambda ",        # Python anonymous functions
-    "yield ",         # Python generators
-    "if __name__",    # Python main guard
-    "#!/usr/bin/env python",   # Python shebang
-    "# -*-",          # Python encoding declaration
-    "print(",         # Python 3 print function (careful — not definitive alone)
-    "from __future__",        # Python future imports
-])
+_PYTHON_KEYWORDS = frozenset(
+    [
+        "def ",  # Python function definitions
+        "elif ",  # Python-specific (Java uses 'else if')
+        "__init__",  # Python class constructor magic method
+        "self.",  # Python instance method first argument
+        "lambda ",  # Python anonymous functions
+        "yield ",  # Python generators
+        "if __name__",  # Python main guard
+        "#!/usr/bin/env python",  # Python shebang
+        "# -*-",  # Python encoding declaration
+        "print(",  # Python 3 print function (careful — not definitive alone)
+        "from __future__",  # Python future imports
+    ]
+)
 
 
 def detect_language(code: str, filename: Optional[str] = None) -> Language:
@@ -58,33 +80,47 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
             return Language.python
         if ext == ".java":
             return Language.java
-        if ext in [".js", ".ts", ".html", ".css", ".cpp", ".c", ".go", ".rs", ".rb", ".php", ".sh", ".json"]:
+        if ext in [
+            ".js",
+            ".ts",
+            ".html",
+            ".css",
+            ".cpp",
+            ".c",
+            ".go",
+            ".rs",
+            ".rb",
+            ".php",
+            ".sh",
+            ".json",
+        ]:
             logger.warning(f"Unsupported file extension detected: {ext}")
             return Language.unsupported
 
     # --- NEW ML-BASED APPROACH (Google Magika) ---
     try:
         from magika import Magika
+
         m = Magika()
         res = m.identify_bytes(code.encode("utf-8", errors="replace"))
         label = res.output.label.lower()
-        
-        logger.debug(f"Magika ML detected label: {label} (score: {res.output.score})")
-        
+
+        logger.debug(f"Magika ML detected label: {label}")
+
         if label == "python":
             return Language.python
         if label == "java":
             return Language.java
-        
+
         # Magika sometimes classifies tiny snippets as 'txt' or 'empty'
         # If it's highly confident it's something else (like 'javascript', 'html'), we reject it.
         if label not in ["txt", "empty", "unknown", "python", "java"]:
             logger.warning(f"Magika ML rejected unsupported language: {label}")
             return Language.unsupported
-            
+
     except Exception as e:
         logger.error(f"Magika detection error: {e}")
-        
+
     # --- END NEW ML-BASED APPROACH ---
 
     """
@@ -132,12 +168,12 @@ def detect_language(code: str, filename: Optional[str] = None) -> Language:
     return Language.unsupported
     # --- END PREVIOUS APPROACH ---
     """
-    
+
     # Fallback for ML approach if Magika returns 'txt'
     # We use a very fast naive check here just in case Magika missed a tiny snippet
     if "public class" in code or "System.out" in code or "import java." in code:
         return Language.java
     if "def " in code or "import " in code or "print(" in code:
         return Language.python
-        
+
     return Language.unsupported

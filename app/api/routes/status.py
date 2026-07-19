@@ -3,13 +3,13 @@ app/api/routes/status.py — Task status polling endpoint.
 
 GET /api/v1/status/{session_id}
 """
+
 from __future__ import annotations
 
 import json
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
-from loguru import logger
 
 from app.cache.redis_cache import get_redis_client
 from app.models.session import TaskStatus, TaskStatusResponse
@@ -49,7 +49,11 @@ async def get_status(session_id: str) -> TaskStatusResponse:
         status=task_status,
         progress_pct=progress_map.get(task_status, 0),
         current_stage=data.get("current_stage"),
-        started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None,
-        completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
+        started_at=datetime.fromisoformat(data["started_at"])
+        if data.get("started_at")
+        else None,
+        completed_at=datetime.fromisoformat(data["completed_at"])
+        if data.get("completed_at")
+        else None,
         error_message=data.get("error_message"),
     )

@@ -4,12 +4,15 @@ app/cache/redis_cache.py — Async Redis client with in-memory fallback.
 Tries to connect to Redis. If Redis is unavailable (no Docker, no brew),
 automatically falls back to the in-memory store so the app still works.
 """
+
 from __future__ import annotations
 
 from loguru import logger
 from app.config import get_settings
 from app.cache.memory_store import MemoryClient
 
+import logfire
+logfire.instrument_redis()
 _client = None
 _using_memory = False
 
@@ -25,6 +28,7 @@ async def get_redis_client():
     # Try real Redis first
     try:
         import redis.asyncio as aioredis
+
         r = aioredis.from_url(
             settings.redis_url,
             encoding="utf-8",

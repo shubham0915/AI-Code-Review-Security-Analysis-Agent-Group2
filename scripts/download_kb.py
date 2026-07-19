@@ -7,7 +7,6 @@ into a local folder (data/knowledge_base) for RAG indexing.
 Includes fallback static files if network calls fail.
 """
 
-import os
 import sys
 import requests
 from pathlib import Path
@@ -149,11 +148,17 @@ def main():
 
     # Handle Fallbacks / Local files if needed
     if downloaded_cs == 0:
-        logger.warning("No OWASP Cheat Sheets could be downloaded. Creating fallback files.")
-        (KB_DIR / "owasp_top10_fallback.md").write_text(FALLBACK_OWASP_TOP10, encoding="utf-8")
+        logger.warning(
+            "No OWASP Cheat Sheets could be downloaded. Creating fallback files."
+        )
+        (KB_DIR / "owasp_top10_fallback.md").write_text(
+            FALLBACK_OWASP_TOP10, encoding="utf-8"
+        )
     else:
         # Create a general OWASP Guide anyway
-        (KB_DIR / "owasp_top10_reference.md").write_text(FALLBACK_OWASP_TOP10, encoding="utf-8")
+        (KB_DIR / "owasp_top10_reference.md").write_text(
+            FALLBACK_OWASP_TOP10, encoding="utf-8"
+        )
 
     # Save CWE Fallback
     (KB_DIR / "cwe_top25_reference.md").write_text(FALLBACK_CWE_TOP25, encoding="utf-8")

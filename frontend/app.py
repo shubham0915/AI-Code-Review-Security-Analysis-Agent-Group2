@@ -15,6 +15,9 @@ import uuid
 from datetime import datetime
 import streamlit as st
 
+import logfire
+logfire.configure()
+logfire.instrument_httpx()
 # Page config — MUST be the very first Streamlit call
 st.set_page_config(
     page_title="AI Code Review Agent",
@@ -505,6 +508,10 @@ if mode == "local":
 
 st.markdown("---")
 
+@st.experimental_dialog("Analysis Report", width="large")
+def show_report_dialog(res: dict):
+    display_analysis_report(res)
+
 def display_analysis_report(res: dict):
     if not res:
         st.warning("No result available.")
@@ -547,10 +554,15 @@ def display_analysis_report(res: dict):
             st.success("No code smells or design issues found!")
         else:
             for f in findings:
-                with st.expander(f"{f.get('type', 'Finding')} - {f.get('title', 'Unknown')} (Severity: {f.get('severity', 'N/A')})"):
+                title = f.get('category', 'Unknown').replace('_', ' ').title()
+                type_name = f.get('type', 'Finding').replace('_', ' ').title()
+                with st.expander(f"{type_name} - {title} (Severity: {f.get('severity', 'N/A')})"):
                     st.write(f"**Description:** {f.get('description', '')}")
-                    if f.get('line_start') and f.get('line_end'):
-                        st.write(f"**Lines:** {f['line_start']} to {f['line_end']}")
+                    ls, le = f.get('line_start'), f.get('line_end')
+                    if ls and le and ls != le:
+                        st.write(f"**Lines:** {ls} to {le}")
+                    elif ls:
+                        st.write(f"**Line:** {ls}")
                     if f.get('suggestion'):
                         st.write(f"**Suggestion:** {f['suggestion']}")
                         
@@ -980,8 +992,7 @@ with tab_history:
                                     st.warning(f"⚠️ Result stored but pipeline may not have completed: {res.get('error')}")
                                     st.json(res)
                                 else:
-                                    st.markdown("##### Analysis Result")
-                                    display_analysis_report(res)
+                                    show_report_dialog(res)
                             except Exception as e:
                                 st.error(f"Could not fetch result: {e}")
     else:
@@ -1013,8 +1024,7 @@ with tab_history:
                 try:
                     import httpx
                     res = httpx.get(f"{API_BASE}/api/v1/result/{manual_sid.strip()}", timeout=5).json()
-                    st.markdown("##### Analysis Result")
-                    display_analysis_report(res)
+                    show_report_dialog(res)
                 except Exception as e:
                     st.error(f"Could not fetch result: {e}")
 

@@ -7,31 +7,24 @@ from __future__ import annotations
 
 import time
 from contextlib import asynccontextmanager
-# pyrefly: ignore [missing-import]
 from fastapi import FastAPI, Request
-# pyrefly: ignore [missing-import]
 from fastapi.middleware.cors import CORSMiddleware
-# pyrefly: ignore [missing-import]
 from fastapi.responses import JSONResponse
-# pyrefly: ignore [missing-import]
 from loguru import logger
-# pyrefly: ignore [missing-import]
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
-# pyrefly: ignore [missing-import]
 from starlette.responses import Response
 
+import logfire
+logfire.configure()
 from app.config import get_settings
 from app.api.routes import health, submit, status, result, rag
 from app.cache.redis_cache import close_redis
 
 settings = get_settings()
 
-# pyrefly: ignore [missing-import]
 from prometheus_client import REGISTRY
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Prometheus metrics
-# ─────────────────────────────────────────────────────────────────────────────
 if "http_requests_total" in REGISTRY._names_to_collectors:
     REQUEST_COUNT = REGISTRY._names_to_collectors["http_requests_total"]
 else:
@@ -60,9 +53,7 @@ else:
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Lifespan (startup / shutdown)
-# ─────────────────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("=" * 60)
@@ -76,9 +67,7 @@ async def lifespan(app: FastAPI):
     await close_redis()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # App factory
-# ─────────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="AI Code Review & Security Analysis Agent",
     description=(
@@ -94,9 +83,9 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# ─────────────────────────────────────────────────────────────────────────────
+logfire.instrument_fastapi(app)
+
 # Middleware
-# ─────────────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],   # Restrict in production
@@ -124,17 +113,13 @@ async def metrics_middleware(request: Request, call_next):
     return response
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Prometheus metrics endpoint
-# ─────────────────────────────────────────────────────────────────────────────
 @app.get("/metrics", include_in_schema=False)
 async def metrics():
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Routers
-# ─────────────────────────────────────────────────────────────────────────────
 app.include_router(health.router)
 app.include_router(submit.router)
 app.include_router(status.router)
@@ -149,9 +134,7 @@ async def root():
         "health": "/health/ready"
     }
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Global exception handler
-# ─────────────────────────────────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled exception on {request.url}: {exc}")
@@ -161,11 +144,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Dev run entry point
-# ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    # pyrefly: ignore [missing-import]
     import uvicorn
     uvicorn.run(
         "app.main:app",

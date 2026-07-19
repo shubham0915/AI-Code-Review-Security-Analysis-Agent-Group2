@@ -11,6 +11,7 @@ Usage:
     fast_llm = get_fast_llm() # fast model (PR summary, quick tasks)
     embeddings = get_embeddings()  # for ChromaDB indexing and search
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -19,9 +20,7 @@ from loguru import logger
 from app.config import get_settings
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Primary LLM — used by Security Vulnerability Agent + Remediation Agent
-# ─────────────────────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def get_llm():
     """Return the primary LLM (heavier, more accurate)."""
@@ -29,6 +28,7 @@ def get_llm():
 
     if settings.using_gemini:
         from langchain_google_genai import ChatGoogleGenerativeAI
+
         logger.info(f"LLM: Gemini → {settings.gemini_primary_model}")
         return ChatGoogleGenerativeAI(
             model=settings.gemini_primary_model,
@@ -39,6 +39,7 @@ def get_llm():
 
     # Ollama fallback
     from langchain_community.chat_models import ChatOllama
+
     logger.info(f"LLM: Ollama → {settings.ollama_primary_model}")
     return ChatOllama(
         model=settings.ollama_primary_model,
@@ -48,9 +49,7 @@ def get_llm():
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Fast LLM — used by Code Analysis Agent + PR Summary Agent
-# ─────────────────────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def get_fast_llm():
     """Return the fast LLM (lower latency, lighter tasks)."""
@@ -58,6 +57,7 @@ def get_fast_llm():
 
     if settings.using_gemini:
         from langchain_google_genai import ChatGoogleGenerativeAI
+
         logger.info(f"Fast LLM: Gemini → {settings.gemini_fast_model}")
         return ChatGoogleGenerativeAI(
             model=settings.gemini_fast_model,
@@ -67,6 +67,7 @@ def get_fast_llm():
         )
 
     from langchain_community.chat_models import ChatOllama
+
     logger.info(f"Fast LLM: Ollama → {settings.ollama_fast_model}")
     return ChatOllama(
         model=settings.ollama_fast_model,
@@ -76,9 +77,7 @@ def get_fast_llm():
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Embeddings — used by ChromaDB indexing + RAG retrieval
-# ─────────────────────────────────────────────────────────────────────────────
 @lru_cache(maxsize=1)
 def get_embeddings():
     """Return the embedding model for vector store operations."""
@@ -86,6 +85,7 @@ def get_embeddings():
 
     if settings.using_gemini:
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
         logger.info(f"Embeddings: Gemini → {settings.gemini_embed_model}")
         return GoogleGenerativeAIEmbeddings(
             model=settings.gemini_embed_model,
@@ -93,6 +93,7 @@ def get_embeddings():
         )
 
     from langchain_community.embeddings import OllamaEmbeddings
+
     logger.info(f"Embeddings: Ollama → {settings.ollama_embed_model}")
     return OllamaEmbeddings(
         model=settings.ollama_embed_model,
@@ -100,9 +101,7 @@ def get_embeddings():
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Provider info — useful for health check and UI display
-# ─────────────────────────────────────────────────────────────────────────────
 def get_provider_info() -> dict:
     settings = get_settings()
     if settings.using_gemini:

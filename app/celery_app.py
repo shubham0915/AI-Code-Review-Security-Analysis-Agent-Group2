@@ -3,10 +3,18 @@ app/celery_app.py — Celery application factory.
 
 Worker: celery -A app.celery_app worker --concurrency=2 -l info
 """
+
 from celery import Celery
 from app.config import get_settings
 
 settings = get_settings()
+
+import logfire
+from openinference.instrumentation.langchain import LangChainInstrumentor
+
+logfire.configure()
+logfire.instrument_celery()
+LangChainInstrumentor().instrument()
 
 celery_app = Celery(
     "ai_code_review",
