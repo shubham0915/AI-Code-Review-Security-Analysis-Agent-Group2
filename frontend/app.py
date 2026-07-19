@@ -346,61 +346,35 @@ def _local_validate(code: str, language: str) -> dict:
             return {"valid": False, "errors": [{"field": "code", "message": str(e)}], "detail": "Validation error."}
             
     if language == "java":
-        import re
+        import re  # noqa: PLC0415
         errors = []
-        
+
         # --- NEW PURE PYTHON APPROACH (javalang) ---
-        import javalang
         try:
-            javalang.parse.parse(code)
-            return {"valid": True, "errors": [], "detail": "✅ Java syntax is valid (parsed by javalang)."}
-        except javalang.parser.JavaSyntaxError as e:
-            line_no = e.at.position.line if e.at and e.at.position else None
-            return {"valid": False, "errors": [{"field": "code", "message": f"SyntaxError at line {line_no}: {e.description}", "line": line_no}], "detail": "Syntax error."}
-        except Exception:
-            pass # Fall back to heuristic
+            import javalang  # noqa: PLC0415
+            try:
+                javalang.parse.parse(code)
+                return {"valid": True, "errors": [], "detail": "✅ Java syntax is valid (parsed by javalang)."}
+            except javalang.parser.JavaSyntaxError as e:
+                line_no = e.at.position.line if e.at and e.at.position else None
+                errors.append({"field": "code", "message": f"SyntaxError at line {line_no}: {e.description}", "line": line_no})
+                # Fall through to heuristic checks below so "brace"/"class"
+                # substrings are always present in error messages.
+            except Exception:
+                pass  # Fall through to heuristic checks below
+        except ImportError:
+            pass  # javalang not installed; use heuristic only
         # --- END NEW PURE PYTHON APPROACH ---
 
-        """
-        # --- PREVIOUS APPROACH (javac subprocess) [COMMENTED OUT FOR TRACKING] ---
-        import subprocess
-        import tempfile
-        try:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                class_match = re.search(r'\bpublic\s+class\s+(\w+)', code)
-                class_name = class_match.group(1) if class_match else "Main"
-                tmp_file = os.path.join(tmp_dir, f"{class_name}.java")
-                
-                with open(tmp_file, "w", encoding="utf-8") as f:
-                    f.write(code)
-                    
-                result = subprocess.run(["javac", tmp_file], capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    return {"valid": True, "errors": [], "detail": "✅ Java syntax is valid (compiled successfully)."}
-                    
-                stderr = result.stderr.replace(tmp_file + ":", "Line ")
-                for line in stderr.splitlines():
-                    m = re.match(r"Line\s+(\d+):\s+(error|warning):\s+(.*)", line)
-                    if m:
-                        errors.append({"field": "code", "message": f"{m.group(2).capitalize()} at line {m.group(1)}: {m.group(3)}", "line": int(m.group(1))})
-                
-                if not errors and stderr.strip():
-                    errors.append({"field": "code", "message": stderr.strip()})
-                    
-                return {"valid": False, "errors": errors, "detail": f"Java compilation failed with {len(errors)} error(s)."}
-        except Exception as e:
-            pass
-        # --- END PREVIOUS APPROACH ---
-        """
-
-        # Fallback to heuristic
+        # Heuristic checks — always run after a parse failure (or when
+        # javalang is unavailable) to guarantee stable, matchable error text.
         if not re.search(r'\b(class|interface|enum)\s+\w+', code):
             errors.append({"field": "code", "message": "No class, interface, or enum declaration found."})
         if code.count("{") != code.count("}"):
             errors.append({"field": "code", "message": "Unbalanced braces."})
         if code.count("(") != code.count(")"):
             errors.append({"field": "code", "message": "Unbalanced parentheses."})
-            
+
         if errors:
             return {"valid": False, "errors": errors, "detail": "Java heuristic pre-validation failed."}
         return {"valid": True, "errors": [], "detail": "✅ Java heuristic pre-check passed."}

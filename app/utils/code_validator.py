@@ -49,7 +49,7 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
     errors: list[ValidationError] = []
 
     # --- NEW PURE PYTHON APPROACH (javalang) ---
-    import javalang
+    import javalang  # noqa: PLC0415
 
     try:
         javalang.parse.parse(code)
@@ -68,8 +68,15 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
                 column=col_no,
             )
         )
+        # Always run deterministic heuristic checks too so callers can
+        # reliably match "class" or "brace" substrings in error messages,
+        # even when javalang produced a generic syntax error first.
+        heuristic = _validate_java_heuristic(code)
+        errors.extend(heuristic.errors)
         return SubmissionValidationResponse(
-            valid=False, errors=errors, detail="Java parsing failed with 1 error."
+            valid=False,
+            errors=errors,
+            detail=f"Java parsing failed with {len(errors)} error(s).",
         )
     except Exception as e:
         logger.error(f"javalang validation error: {e}")
