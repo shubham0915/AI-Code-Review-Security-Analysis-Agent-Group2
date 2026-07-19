@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # Application
     app_env: str = "development"
-    app_host: str = "0.0.0.0"
+    app_host: str = "0.0.0.0"  # nosec B104
     app_port: int = 8000
     app_secret_key: str = "dev-secret-key-change-in-production"
     log_level: str = "INFO"

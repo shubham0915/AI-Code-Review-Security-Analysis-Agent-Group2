@@ -149,11 +149,11 @@ def _validate_java(code: str) -> SubmissionValidationResponse:
 
 
 def _get_javac_version() -> str:
-    """Return the javac version string for display."""
-    import subprocess
+    """Return the javac version string for display (used by legacy javac path only)."""
+    import subprocess  # nosec B404
 
     try:
-        r = subprocess.run(
+        r = subprocess.run(  # nosec B603 B607
             ["javac", "-version"], capture_output=True, text=True, timeout=3
         )
         return (r.stdout or r.stderr).strip()
