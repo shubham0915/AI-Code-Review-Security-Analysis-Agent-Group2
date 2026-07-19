@@ -77,10 +77,23 @@ async def run_code_analysis(state: AgentState) -> dict:
             "code": state.get("code", ""),
             "language": state.get("language", "python")
         })
-        raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
-        print(f"[CODE_ANALYSIS] LLM responded. Parsing JSON...", flush=True)
-        data = _extract_json(raw_text)
-        result = CodeAnalysisResult(**data)
+        print(f"[CODE_ANALYSIS] LLM responded. Parsing response...", flush=True)
+
+        # Handle structured responses (Pydantic model returned by mock or structured LLM output)
+        if isinstance(raw_response, CodeAnalysisResult):
+            result = raw_response
+        elif isinstance(raw_response, dict):
+            result = CodeAnalysisResult(**raw_response)
+        elif hasattr(raw_response, "model_dump"):   # Pydantic v2 model (not CodeAnalysisResult)
+            result = CodeAnalysisResult(**raw_response.model_dump())
+        elif hasattr(raw_response, "dict"):          # Pydantic v1 model
+            result = CodeAnalysisResult(**raw_response.dict())
+        else:
+            # Fall back to extracting JSON from text (normal LLM string output)
+            raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
+            data = _extract_json(raw_text)
+            result = CodeAnalysisResult(**data)
+
         print(f"[CODE_ANALYSIS] Parsed OK. quality_score={result.quality_score}", flush=True)
         return {"code_analysis_result": result}
     except Exception as e:
