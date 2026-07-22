@@ -1127,6 +1127,82 @@ git push origin feat/your-feature-name
 
 ---
 
+## 🏗️ Architectural Design Principles & Layer Summary
+
+### The Gatekeeper Pattern (Fail-Fast)
+We strictly enforce a **Gatekeeper Pattern** during the code submission phase. 
+- **Rule:** If submitted code is in an unsupported language (via Magika ML) or contains syntax errors (via `javalang` / `ast`), the pipeline **must halt immediately**.
+- **Reason:** We do *not* pass broken or unsupported code to the AI / LLM Agent layer (Celery queue). Sending invalid code to LLMs wastes API tokens, takes exponentially longer (10 seconds vs 1 millisecond), and severely degrades the quality of the AI's logic and security analysis.
+- **Enforcement:** Validation happens instantly in both the Streamlit UI (for UX) and the FastAPI backend (`app/utils/code_validator.py`) before tasks are queued.
+
+### Layer Summary Table
+
+| Layer | Folder | Technology | Role |
+|---|---|---|---|
+| **Frontend** | `frontend/` | Streamlit | Developer UI — code input, results, RAG chat |
+| **API** | `app/api/routes/` | FastAPI | HTTP endpoints — submit, status, result, RAG |
+| **Config** | `app/config.py` | Pydantic Settings | Reads `.env` into typed Python objects |
+| **Validation** | `app/utils/` | AST + Regex | Syntax checks before analysis is queued |
+| **Cache** | `app/cache/` | Redis + In-Memory | Session storage with automatic fallback |
+| **Task Queue** | `app/celery_app.py` | Celery + Redis | Runs analysis in background, non-blocking |
+| **LLM Router** | `app/llm/factory.py` | Ollama / Gemini | Abstracts which AI model is used |
+| **RAG** | `app/rag/indexer.py` | LlamaIndex + ChromaDB | Embeds OWASP docs, enables semantic search |
+| **Data Models** | `app/models/` | Pydantic | Strict typed contracts between all layers |
+| **Knowledge Base** | `data/knowledge_base/` | Markdown | 12 OWASP security guidelines (source docs) |
+| **Vector Store** | `data/chroma_db/` | ChromaDB | 264 embedded mathematical vectors (local) |
+| **Tests** | `tests/` | Pytest | Unit + integration automated tests |
+| **Scripts** | `scripts/` | Python CLI | Setup tools (build index, test RAG) |
+| **CI/CD** | `.github/workflows/` | GitHub Actions | Auto-tests every push to GitHub |
+
+---
+
+## 🔍 Architecture Evolution: Detailed Breakdown
+
+### 1. Language Detection: How do we know if it's Java or Python?
+We must identify the language *before* validating to ensure we use the correct parser.
+- **What we used first:** A naive string matching system. If the code contained `public class`, it scored 1 for Java. If it contained `def `, it scored 1 for Python. Python won all ties.
+- **What we use NOW:** We integrated **Magika** (by Google). Magika uses deep learning to identify the language in milliseconds. If Magika determines a snippet is JavaScript, HTML, or C++, our system strictly rejects it as an "Unsupported Language" rather than guessing.
+- **Further Improvement:** If we wanted to support dozens of languages, we could integrate GitHub's `Linguist` library or offload detection to an extremely fast, quantized LLM.
+
+### 2. Syntax Validation: Catching the errors
+Validation acts as our **"Gatekeeper"**. If code fails validation, the pipeline stops instantly. It is never sent to the expensive AI Agents for deep review.
+- **What we used first for Java:** We saved the code to a hidden file and triggered the system terminal to run `javac Main.java`. While this accurately caught errors, spinning up a Java Virtual Machine on every keystroke was extremely heavy on CPU resources.
+- **What we use NOW for Java:** We use **`javalang`**, a pure Python library. It parses Java code directly in the server's memory without needing Java installed on the host machine. It returns the exact Line and Column number of the syntax error instantly.
+- **Further Improvement:** `javalang` is excellent, but for enterprise-grade parsing that can gracefully handle heavily broken code, **`tree-sitter`** is the gold standard used by modern IDEs.
+
+### 3. File Upload Security (Magic Byte Sniffing)
+Malicious users often try to bypass security filters by simply renaming a file (e.g., renaming a C++ payload or executable to `safe_script.py`).
+- **Our Current State-of-the-Art Defense:** We implemented **"Content Sniffing"**. Even if a user uploads a file with a `.py` extension, we do not blindly trust it. We feed the raw bytes into the Magika AI model. If Magika detects that the file is actually `cpp` or `binary`, we instantly trigger a massive `Extension Mismatch` error and block the submission.
+
+### 4. Proactive UI UX (The Gatekeeper)
+A Gatekeeper should not let you try to walk through a locked door; the door should simply not open.
+- **Our Current Implementation:** The "Submit for Analysis" buttons in the Streamlit UI are strictly bound to the local live-validation state. If the code contains a syntax error or triggers an extension mismatch, the submit buttons are completely greyed out and disabled. This perfectly synchronizes the user experience with our backend architectural rules!
+
+### 5. Secure Coding Knowledge Base (RAG Pipeline)
+To ensure the AI Agent reviews code against official security standards without hallucinating, we use Retrieval-Augmented Generation (RAG) powered by local AI tools. The pipeline is split into three core phases:
+- **Chunking Strategy**: We now use **`MarkdownNodeParser`** to chunk logically by headers, maintaining structural context.
+- **Vector Embedding**: We use local dense vector embeddings via Ollama (`nomic-embed-text`) instead of paying for cloud APIs.
+- **Vector Store Indexing**: We use embedded **ChromaDB** to remain strictly local, private, and plug-and-play.
+
+---
+
+## 🐛 Milestone 2 — Bug Report & Resolution Log
+
+During the implementation and live testing of the Milestone 2 multi-agent pipeline, we discovered and resolved several critical bugs:
+
+| # | Bug | File | Severity | Root Cause | Fix Strategy |
+|---|---|---|---|---|---|
+| 1 | LangGraph fan-out deadlock | `graph.py` | 🔴 Critical | Wrong graph topology | Sequential pipeline |
+| 2 | PydanticOutputParser + Ollama | `code_analysis.py`, `security_vuln.py` | 🔴 Critical | Markdown fences in LLM output | Custom `_extract_json()` |
+| 3 | Severity enum case mismatch | `findings.py` | 🟠 High | LLM outputs uppercase | `field_validator` lowercase normalizer |
+| 4 | Missing `id` and `category` fields | `findings.py` | 🟠 High | LLM omits optional schema fields | Auto-generate with `model_validator` |
+| 5 | `cwe_id` int vs string | `findings.py` | 🟡 Medium | LLM returns integer CWE IDs | Type coercion validator |
+| 6 | OWASP category format mismatch | `findings.py` | 🟡 Medium | LLM uses legacy/short OWASP codes | Multi-format prefix + keyword normalizer |
+| 7 | `{username}` as template variable | `security_vuln.py` | 🟠 High | Single braces in prompt example | Escape with `{{username}}` |
+| 8 | `asyncio.run()` in Celery | `analysis.py` | 🟡 Medium | Potential conflicting event loop | Defensive loop detection + `nest_asyncio` |
+
+---
+
 <div align="center">
 
 **Built with ❤️ using FastAPI · LangGraph · LlamaIndex · ChromaDB · Ollama · Streamlit · Celery · Redis**
