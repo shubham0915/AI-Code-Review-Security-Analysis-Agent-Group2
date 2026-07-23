@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from loguru import logger
 
-from app.rag.indexer import build_or_load_index
+from app.rag import build_or_load_index
 
 router = APIRouter(prefix="/api/v1/rag", tags=["RAG Assistant"])
 

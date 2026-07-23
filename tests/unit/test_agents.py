@@ -3,8 +3,8 @@ import json
 from unittest.mock import AsyncMock, patch, MagicMock
 from langchain_core.messages import AIMessage
 
-from app.models.findings import CodeAnalysisResult, SecurityAnalysisResult
-from app.agents.state import AgentState
+from app.models import CodeAnalysisResult, SecurityAnalysisResult
+from app.agents.graph import AgentState
 from app.agents.code_analysis import run_code_analysis
 from app.agents.security_vuln import run_security_vuln
 

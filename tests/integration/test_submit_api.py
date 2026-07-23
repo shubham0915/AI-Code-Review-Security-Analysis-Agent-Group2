@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 # Patch Redis before importing app
-with patch("app.cache.redis_cache.get_redis_client") as mock_redis_factory:
+with patch("app.cache.get_redis_client") as mock_redis_factory:
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=None)
     mock_redis.setex = AsyncMock(return_value=True)

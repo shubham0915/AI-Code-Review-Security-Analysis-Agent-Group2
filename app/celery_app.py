@@ -1,7 +1,21 @@
 """
-app/celery_app.py — Celery application factory.
+app/celery_app.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PURPOSE: Creates and configures the Celery background task queue.
+         Celery is what makes code analysis run in the BACKGROUND so that
+         the API can respond to the user immediately with a session_id,
+         instead of making them wait 60+ seconds for AI agents to finish.
 
-Worker: celery -A app.celery_app worker --concurrency=2 -l info
+HOW IT WORKS:
+  1. User submits code → API returns session_id immediately (202 Accepted)
+  2. API enqueues a 'run_full_analysis' task onto the Redis queue
+  3. A Celery worker process picks up the task and runs all AI agents
+  4. Results are stored in Redis when done
+  5. User polls GET /api/v1/status/{session_id} to check progress
+
+TO START A WORKER:
+  celery -A app.celery_app worker --concurrency=2 -l info
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
 from celery import Celery

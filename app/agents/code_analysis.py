@@ -2,9 +2,9 @@ import json
 import re
 from loguru import logger
 from langchain_core.prompts import ChatPromptTemplate
-from app.llm.factory import get_fast_llm
-from app.models.findings import CodeAnalysisResult
-from app.agents.state import AgentState
+from app.llm import get_fast_llm
+from app.models import CodeAnalysisResult
+from app.agents.graph import AgentState
 
 PROMPT = """You are an expert Senior Software Engineer performing a code review.
 Your task is to analyze the provided source code for code smells, design anti-patterns, complexity issues, and poor coding practices.

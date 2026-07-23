@@ -18,9 +18,9 @@ async def health():
 
 @router.get("/health/ready", summary="Readiness check (Redis + LLM provider)")
 async def ready():
-    from app.cache.redis_cache import get_redis_client
+    from app.cache import get_redis_client, is_using_memory_fallback
     from app.config import get_settings
-    from app.llm.factory import get_provider_info
+    from app.llm import get_provider_info
 
     settings = get_settings()
     checks = {}
@@ -29,8 +29,6 @@ async def ready():
     try:
         redis = await get_redis_client()
         await redis.ping()
-        from app.cache.redis_cache import is_using_memory_fallback
-
         if is_using_memory_fallback():
             checks["cache"] = "in-memory (Redis not running)"
         else:
