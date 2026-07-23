@@ -616,8 +616,8 @@ graph TB
 
 | Layer | 🏠 Local Dev (Current) | 🏭 Production Replacement | Why Change? |
 |---|---|---|---|
-| **LLM** | Ollama (`codestral`, `qwen2.5-coder:7b`) local GGUF | Azure OpenAI (`gpt-4o`, `gpt-4o-mini`) or AWS Bedrock (`claude-3.5-sonnet`) | Higher accuracy, SLA, faster inference at scale |
-| **Embedding** | `nomic-embed-text` via Ollama (768-dim) | `text-embedding-3-large` (OpenAI) or `amazon.titan-embed-text-v2` | More dimensions, better retrieval quality |
+| **LLM** | Gemini (`gemini-2.0-flash`) via API / Ollama (`codestral`, `qwen2.5-coder:7b`) local | Azure OpenAI (`gpt-4o`, `gpt-4o-mini`) or AWS Bedrock (`claude-3.5-sonnet`) | Higher accuracy, SLA, faster inference at scale |
+| **Embedding** | `models/text-embedding-004` (Gemini) / `nomic-embed-text` (Ollama) | `text-embedding-3-large` (OpenAI) or `amazon.titan-embed-text-v2` | More dimensions, better retrieval quality |
 | **Vector DB** | ChromaDB (in-process, SQLite-backed) | Pinecone, Weaviate Cloud, or Qdrant Cloud | Multi-tenancy, SLA guarantees, auto-scaling, managed backups |
 | **Message Broker** | Redis (local Docker) | AWS SQS or Azure Service Bus | Durability, dead-letter queues, managed scaling |
 | **Cache** | Redis (local Docker) | AWS ElastiCache (Redis cluster) | High availability, automatic failover, multi-AZ |
