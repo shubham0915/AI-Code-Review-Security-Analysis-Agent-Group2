@@ -454,8 +454,8 @@ This section describes **exactly what code exists today**, what it does, and whi
 | Paste submission API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/paste` — accepts JSON `{code, language}` |
 | File upload API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/file` — accepts `.py` or `.java` multipart |
 | Validate-only API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/validate` — syntax check, no task queued |
-| Language detector | [`app/utils/language_detector.py`](app/utils/language_detector.py) | Extension → Pygments → keyword heuristics → default Python |
-| Code validator | [`app/utils/code_validator.py`](app/utils/code_validator.py) | Python: `ast.parse()` / Java: brace balance + class check |
+| Language detector | [`app/validators.py`](app/validators.py) | Extension → Pygments → keyword heuristics → default Python |
+| Code validator | [`app/validators.py`](app/validators.py) | Python: `ast.parse()` / Java: brace balance + class check |
 | Status polling | [`app/api/routes/status.py`](app/api/routes/status.py) | `GET /api/v1/status/{session_id}` — reads Redis session state |
 | Result retrieval | [`app/api/routes/result.py`](app/api/routes/result.py) | `GET /api/v1/result/{session_id}` — returns completed analysis |
 | Health check | [`app/api/routes/health.py`](app/api/routes/health.py) | `GET /health/ready` — checks Redis + Ollama connectivity |
@@ -475,9 +475,9 @@ This section describes **exactly what code exists today**, what it does, and whi
 |---|---|---|
 | FastAPI App | [`app/main.py`](app/main.py) | App factory, CORS, Prometheus middleware, lifespan hooks |
 | Settings | [`app/config.py`](app/config.py) | Pydantic-settings, all config from `.env` with typed defaults |
-| Redis Client | [`app/cache/redis_cache.py`](app/cache/redis_cache.py) | Async `redis.asyncio` singleton, `get/set/delete` helpers |
+| Redis Client | [`app/cache.py`](app/cache.py) | Async `redis.asyncio` singleton, `get/set/delete` helpers |
 | Celery App | [`app/celery_app.py`](app/celery_app.py) | Task queue factory, Redis broker/backend, analysis queue routing |
-| Analysis Task | [`app/tasks/analysis.py`](app/tasks/analysis.py) | Celery task stub — session state machine, retry logic (agents wired in M3) |
+| Analysis Task | [`app/tasks.py`](app/tasks.py) | Celery task stub — session state machine, retry logic (agents wired in M3) |
 
 ---
 
@@ -487,9 +487,9 @@ This section describes **exactly what code exists today**, what it does, and whi
 
 | Model File | Models Inside | Purpose |
 |---|---|---|
-| [`app/models/session.py`](app/models/session.py) | `CodeSubmissionRequest`, `SubmissionResponse`, `TaskStatusResponse` | API request/response shapes |
-| [`app/models/findings.py`](app/models/findings.py) | `CodeSmell`, `SecurityVulnerability`, `Remediation`, `PRSummaryResult`, `FullAnalysisResult` | All agent output schemas |
-| [`app/models/report.py`](app/models/report.py) | `ReportDocument`, `ExportRequest`, `ExportFormat` | Report generation inputs/outputs |
+| [`app/models.py`](app/models.py) | `CodeSubmissionRequest`, `SubmissionResponse`, `TaskStatusResponse` | API request/response shapes |
+| [`app/models.py`](app/models.py) | `CodeSmell`, `SecurityVulnerability`, `Remediation`, `PRSummaryResult`, `FullAnalysisResult` | All agent output schemas |
+| [`app/models.py`](app/models.py) | `ReportDocument`, `ExportRequest`, `ExportFormat` | Report generation inputs/outputs |
 
 ---
 
@@ -1102,7 +1102,7 @@ git push origin feat/your-feature-name
 We strictly enforce a **Gatekeeper Pattern** during the code submission phase. 
 - **Rule:** If submitted code is in an unsupported language (via Magika ML) or contains syntax errors (via `javalang` / `ast`), the pipeline **must halt immediately**.
 - **Reason:** We do *not* pass broken or unsupported code to the AI / LLM Agent layer (Celery queue). Sending invalid code to LLMs wastes API tokens, takes exponentially longer (10 seconds vs 1 millisecond), and severely degrades the quality of the AI's logic and security analysis.
-- **Enforcement:** Validation happens instantly in both the Streamlit UI (for UX) and the FastAPI backend (`app/utils/code_validator.py`) before tasks are queued.
+- **Enforcement:** Validation happens instantly in both the Streamlit UI (for UX) and the FastAPI backend (`app/validators.py`) before tasks are queued.
 
 ### Layer Summary Table
 
@@ -1111,12 +1111,12 @@ We strictly enforce a **Gatekeeper Pattern** during the code submission phase.
 | **Frontend** | `frontend/` | Streamlit | Developer UI — code input, results, RAG chat |
 | **API** | `app/api/routes/` | FastAPI | HTTP endpoints — submit, status, result, RAG |
 | **Config** | `app/config.py` | Pydantic Settings | Reads `.env` into typed Python objects |
-| **Validation** | `app/utils/` | AST + Regex | Syntax checks before analysis is queued |
-| **Cache** | `app/cache/` | Redis + In-Memory | Session storage with automatic fallback |
+| **Validation** | `app/validators.py` | AST + Regex | Syntax checks before analysis is queued |
+| **Cache** | `app/cache.py` | Redis + In-Memory | Session storage with automatic fallback |
 | **Task Queue** | `app/celery_app.py` | Celery + Redis | Runs analysis in background, non-blocking |
-| **LLM Router** | `app/llm/factory.py` | Ollama / Gemini | Abstracts which AI model is used |
-| **RAG** | `app/rag/indexer.py` | LlamaIndex + ChromaDB | Embeds OWASP docs, enables semantic search |
-| **Data Models** | `app/models/` | Pydantic | Strict typed contracts between all layers |
+| **LLM Router** | `app/llm.py` | Ollama / Gemini | Abstracts which AI model is used |
+| **RAG** | `app/rag.py` | LlamaIndex + ChromaDB | Embeds OWASP docs, enables semantic search |
+| **Data Models** | `app/models.py` | Pydantic | Strict typed contracts between all layers |
 | **Knowledge Base** | `data/knowledge_base/` | Markdown | 12 OWASP security guidelines (source docs) |
 | **Vector Store** | `data/chroma_db/` | ChromaDB | 264 embedded mathematical vectors (local) |
 | **Tests** | `tests/` | Pytest | Unit + integration automated tests |
