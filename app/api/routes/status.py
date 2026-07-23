@@ -11,8 +11,8 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.cache.redis_cache import get_redis_client
-from app.models.session import TaskStatus, TaskStatusResponse
+from app.cache import get_redis_client
+from app.models import TaskStatus, TaskStatusResponse
 
 router = APIRouter(prefix="/api/v1/status", tags=["Task Status"])
 

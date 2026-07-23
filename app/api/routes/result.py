@@ -10,9 +10,8 @@ import json
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.cache.redis_cache import get_redis_client
-from app.models.findings import FullAnalysisResult
-from app.models.session import TaskStatus
+from app.cache import get_redis_client
+from app.models import FullAnalysisResult, TaskStatus
 
 router = APIRouter(prefix="/api/v1/result", tags=["Analysis Results"])
 

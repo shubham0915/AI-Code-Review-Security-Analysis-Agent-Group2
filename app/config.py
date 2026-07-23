@@ -1,6 +1,18 @@
 """
-app/config.py — Centralised settings loader using pydantic-settings.
-All values fall back to .env file, then to hardcoded defaults.
+app/config.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PURPOSE: Single source of truth for ALL configuration values.
+         Reads from the .env file automatically using pydantic-settings.
+         Never hard-code API keys or settings anywhere else in the codebase.
+
+HOW TO USE:
+  from app.config import get_settings
+  settings = get_settings()
+  print(settings.redis_url)   # "redis://localhost:6379/0"
+
+All values have sensible defaults so the app starts even without a .env file.
+In production, override them via environment variables or a secrets manager.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

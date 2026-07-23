@@ -1,9 +1,28 @@
+"""
+app/agents/graph.py
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PURPOSE: Assembles and compiles the LangGraph analysis pipeline.
+         This file wires all agents together into a directed graph
+         and defines the order in which they execute.
+
+PIPELINE ORDER (sequential):
+  [Start] → run_linters → code_analysis → security_vuln → [End]
+
+Each node is a Python async function that receives the AgentState,
+does its work, and returns a dict of state updates.
+
+The compiled 'analysis_graph' object at the bottom of this file
+is imported by the Celery task (app/tasks.py) and invoked when
+a new analysis job starts.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
+from typing import Dict, Any
 from langgraph.graph import StateGraph, END
 from app.agents.state import AgentState
 from app.agents.code_analysis import run_code_analysis
 from app.agents.security_vuln import run_security_vuln
-from app.linters.python_linter import run_python_linters
-from app.linters.java_linter import run_java_linters
+from app.linters import run_python_linters, run_java_linters
 from loguru import logger
 
 async def run_linters(state: AgentState) -> dict:

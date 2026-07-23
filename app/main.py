@@ -18,7 +18,7 @@ import logfire
 logfire.configure()
 from app.config import get_settings
 from app.api.routes import health, submit, status, result, rag
-from app.cache.redis_cache import close_redis
+from app.cache import close_redis
 
 settings = get_settings()
 

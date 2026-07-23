@@ -2,10 +2,10 @@ import json
 import re
 from loguru import logger
 from langchain_core.prompts import ChatPromptTemplate
-from app.llm.factory import get_llm
-from app.models.findings import SecurityAnalysisResult
-from app.agents.state import AgentState
-from app.rag.indexer import build_or_load_index
+from app.llm import get_llm
+from app.models import SecurityAnalysisResult
+from app.agents.graph import AgentState
+from app.rag import build_or_load_index
 
 PROMPT = """You are an expert Security Engineer performing a secure code review.
 Your task is to analyze the provided source code for security vulnerabilities, specifically focusing on the OWASP Top 10 and CWE standards.

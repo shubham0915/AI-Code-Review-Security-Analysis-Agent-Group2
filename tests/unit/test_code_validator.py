@@ -2,8 +2,8 @@
 tests/unit/test_code_validator.py — Unit tests for code validation logic.
 """
 
-from app.models.session import Language
-from app.utils.code_validator import validate_code
+from app.models import Language
+from app.validators import validate_code
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -115,26 +115,26 @@ public class Example {
 # ─────────────────────────────────────────────────────────────────────────────
 class TestLanguageDetector:
     def test_detect_python_by_extension(self):
-        from app.utils.language_detector import detect_language
+        from app.validators import detect_language
 
         lang = detect_language("x = 1", "myfile.py")
         assert lang == Language.python
 
     def test_detect_java_by_extension(self):
-        from app.utils.language_detector import detect_language
+        from app.validators import detect_language
 
         lang = detect_language("public class Foo {}", "Foo.java")
         assert lang == Language.java
 
     def test_detect_python_by_keywords(self):
-        from app.utils.language_detector import detect_language
+        from app.validators import detect_language
 
         code = "def hello():\n    print('Hi')\n    return True"
         lang = detect_language(code, None)
         assert lang == Language.python
 
     def test_detect_java_by_keywords(self):
-        from app.utils.language_detector import detect_language
+        from app.validators import detect_language
 
         code = "public class Test { public static void main(String[] args) {} }"
         lang = detect_language(code, None)

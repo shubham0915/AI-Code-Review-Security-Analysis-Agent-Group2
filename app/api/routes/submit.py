@@ -18,16 +18,15 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from loguru import logger
 
 from app.config import get_settings
-from app.models.session import (
+from app.models import (
     CodeSubmissionRequest,
     Language,
     SubmissionResponse,
     TaskStatus,
     SubmissionValidationResponse,
 )
-from app.utils.language_detector import detect_language
-from app.utils.code_validator import validate_code
-from app.cache.redis_cache import get_redis_client
+from app.validators import detect_language, validate_code
+from app.cache import get_redis_client
 
 router = APIRouter(prefix="/api/v1/submit", tags=["Code Submission"])
 settings = get_settings()
@@ -143,7 +142,7 @@ async def submit_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
     submission = await _create_session(request.code, language, request.filename)
 
     # Queue the full agent pipeline
-    from app.tasks.analysis import run_full_analysis
+    from app.tasks import run_full_analysis
 
     run_full_analysis.delay(submission.session_id)
     logger.info(f"Queued analysis task for session: {submission.session_id}")
@@ -208,7 +207,7 @@ async def submit_file(
         )
 
     submission = await _create_session(code, language, filename)
-    from app.tasks.analysis import run_full_analysis
+    from app.tasks import run_full_analysis
 
     run_full_analysis.delay(submission.session_id)
     logger.info(f"File '{filename}' queued: {submission.session_id}")
