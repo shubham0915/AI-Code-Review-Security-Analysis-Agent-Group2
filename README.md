@@ -68,27 +68,13 @@ AI-Code-Review-Security-Analysis-Agent-Group2/
 │   │   ├── 📄 result.py            # GET /result/{id} — fetches completed analysis output
 │   │   └── 📄 rag.py               # POST /rag/query — queries the OWASP knowledge base
 │   │
-│   ├── 📁 cache/                   # Session & Result Storage
-│   │   ├── 📄 redis_cache.py       # Stores sessions/results in Redis (primary store)
-│   │   └── 📄 memory_store.py      # In-memory fallback if Redis is not running
-│   │
-│   ├── 📁 llm/                     # LLM Provider Abstraction
-│   │   └── 📄 factory.py           # Routes LLM calls to Ollama or Gemini based on .env
-│   │
-│   ├── 📁 models/                  # Pydantic Data Models (strict type contracts)
-│   │   ├── 📄 session.py           # SubmissionRequest, SubmissionResponse, TaskStatus
-│   │   ├── 📄 findings.py          # AnalysisFinding model (severity, line_number, etc.)
-│   │   └── 📄 report.py            # FinalReport model (overall_score, findings list)
-│   │
-│   ├── 📁 rag/                     # RAG Pipeline (Retrieval-Augmented Generation)
-│   │   └── 📄 indexer.py           # Loads OWASP docs → chunks → embeds → stores in ChromaDB
-│   │
-│   ├── 📁 tasks/                   # Celery Background Workers
-│   │   └── 📄 analysis.py          # The background task that runs the analysis pipeline
-│   │
-│   └── 📁 utils/                   # Shared Utility Functions
-│       ├── 📄 code_validator.py    # Validates Python (AST) and Java (regex) syntax
-│       └── 📄 language_detector.py # Auto-detects if submitted code is Python or Java
+│   ├── 📄 cache.py                 # Session & Result Storage (Redis + memory fallback)
+│   ├── 📄 llm.py                   # LLM Provider Abstraction (Ollama / Gemini)
+│   ├── 📄 models.py                # Pydantic Data Models (session, findings, report)
+│   ├── 📄 rag.py                   # RAG Pipeline (chunking, embedding, indexing)
+│   ├── 📄 tasks.py                 # Celery Background Workers (runs the analysis pipeline)
+│   ├── 📄 linters.py               # Static Analysis Wrappers (Bandit, Pylint, PMD, etc.)
+│   └── 📄 validators.py            # Syntax Validation & Auto-Language Detection
 │
 ├── 📁 frontend/                    # 🖥️ Streamlit Developer Portal UI
 │   └── 📄 app.py                   # Full UI — tabs: Paste Code, Upload, History, Ask Assistant
@@ -680,30 +666,13 @@ ai-code-review-agent/
 │   │   ├── 📄 remediation.py             ← Agent 3: Remediation
 │   │   └── 📄 pr_summary.py              ← Agent 4: PR Summary
 │   │
-│   ├── 📁 rag/                           ← 🔄 Milestone 2: RAG pipeline
-│   │   ├── 📄 indexer.py                 ← Chunk + embed + store in ChromaDB
-│   │   ├── 📄 retriever.py               ← Hybrid retrieval (dense + BM25 + RRF)
-│   │   ├── 📄 reranker.py                ← Cross-encoder reranking
-│   │   └── 📄 chat_engine.py             ← Agent 5: Conversational assistant
-│   │
-│   ├── 📁 linters/                       ← 🔄 Milestone 3: Static analysis wrappers
-│   │   ├── 📄 python_linter.py           ← Bandit + Pylint + Radon subprocess wrappers
-│   │   └── 📄 java_linter.py             ← PMD + SpotBugs subprocess wrappers
-│   │
-│   ├── 📁 models/                        ← ✅ All Pydantic data models
-│   │   ├── 📄 session.py                 ← Submission request/response, TaskStatus enum
-│   │   ├── 📄 findings.py                ← CodeSmell, SecurityVulnerability, Remediation, PRSummary
-│   │   └── 📄 report.py                  ← Report export models
-│   │
-│   ├── 📁 cache/
-│   │   └── 📄 redis_cache.py             ← ✅ Async Redis singleton + get/set/delete helpers
-│   │
-│   ├── 📁 tasks/
-│   │   └── 📄 analysis.py                ← ✅ Celery task (stub for M1, agents wired in M3)
-│   │
-│   ├── 📁 utils/
-│   │   ├── 📄 language_detector.py       ← ✅ Auto-detect Python vs Java
-│   │   └── 📄 code_validator.py          ← ✅ Syntax validation (ast.parse / Java heuristics)
+│   ├── 📄 rag.py                         ← 🔄 Milestone 2: RAG pipeline
+│   ├── 📄 linters.py                     ← 🔄 Milestone 3: Static analysis wrappers
+│   ├── 📄 models.py                      ← ✅ All Pydantic data models
+│   ├── 📄 cache.py                       ← ✅ Async Redis singleton + get/set/delete helpers
+│   ├── 📄 tasks.py                       ← ✅ Celery task (stub for M1, agents wired in M3)
+│   ├── 📄 validators.py                  ← ✅ Syntax validation (ast.parse / Java heuristics)
+│   ├── 📄 llm.py                         ← ✅ LLM factory
 │   │
 │   └── 📁 report/                        ← 🔄 Milestone 4
 │       ├── 📄 generator.py               ← Report orchestration
