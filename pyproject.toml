@@ -8,7 +8,11 @@ addopts = "-v --tb=short --cov=app --cov-report=term-missing --cov-report=html:h
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
+    "ignore::logfire._internal.config.LogfireNotConfiguredWarning",
 ]
+
+[tool.logfire]
+ignore_no_config = true
 
 [build-system]
 requires = ["setuptools"]

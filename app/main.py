@@ -1,7 +1,7 @@
 """
-app/main.py — FastAPI application entry point.
-
-Starts the AI Code Review & Security Analysis Agent API server.
+About this file: main.py
+Structure: FastAPI instance configuration, lifecycle handling, CORS middleware, Prometheus monitoring, and router inclusions.
+Methods used: lifespan, metrics_middleware, metrics, root, global_exception_handler.
 """
 from __future__ import annotations
 
@@ -15,10 +15,13 @@ from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_
 from starlette.responses import Response
 
 import logfire
+from dotenv import load_dotenv
+load_dotenv(override=True)
 logfire.configure()
 from app.config import get_settings
-from app.api.routes import health, submit, status, result, rag
+from app.api.routes import health, submit, status, result, rag, chat
 from app.cache import close_redis
+from app.tracing import check_langsmith_connection
 
 settings = get_settings()
 
@@ -56,12 +59,17 @@ else:
 # Lifespan (startup / shutdown)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Manages application startup and shutdown lifecycle events, including initializing tracing and closing cache connections.
+    """
     logger.info("=" * 60)
     logger.info("AI Code Review & Security Analysis Agent — Starting")
     logger.info(f"Environment: {settings.app_env}")
     logger.info(f"Ollama model: {settings.ollama_primary_model}")
     logger.info(f"Redis: {settings.redis_url}")
     logger.info("=" * 60)
+    # Verify LangSmith tracing connection
+    check_langsmith_connection()
     yield
     logger.info("Shutting down — closing connections...")
     await close_redis()
@@ -97,6 +105,9 @@ app.add_middleware(
 
 @app.middleware("http")
 async def metrics_middleware(request: Request, call_next):
+    """
+    Intercepts HTTP requests to record latency and total request volume metrics for Prometheus monitoring.
+    """
     start = time.time()
     response = await call_next(request)
     duration = time.time() - start
@@ -116,6 +127,9 @@ async def metrics_middleware(request: Request, call_next):
 # Prometheus metrics endpoint
 @app.get("/metrics", include_in_schema=False)
 async def metrics():
+    """
+    Exposes collected Prometheus metrics data in plain text format for external monitoring scrape jobs.
+    """
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
@@ -125,9 +139,13 @@ app.include_router(submit.router)
 app.include_router(status.router)
 app.include_router(result.router)
 app.include_router(rag.router)
+app.include_router(chat.router)
 
 @app.get("/", include_in_schema=False)
 async def root():
+    """
+    Provides basic service metadata and links to documentation and health endpoints.
+    """
     return {
         "name": "AI Code Review & Security Analysis Agent API",
         "docs": "/docs",
@@ -137,6 +155,9 @@ async def root():
 # Global exception handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Catches unhandled exceptions across the application, logging full stack traces and returning sanitized 500 JSON errors.
+    """
     logger.exception(f"Unhandled exception on {request.url}: {exc}")
     return JSONResponse(
         status_code=500,

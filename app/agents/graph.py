@@ -1,95 +1,153 @@
 """
-app/agents/graph.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Assembles and compiles the LangGraph analysis pipeline.
-         This file wires all agents together into a directed graph
-         and defines the order in which they execute.
-
-PIPELINE ORDER (sequential):
-  [Start] → run_linters → code_analysis → security_vuln → [End]
-
-Each node is a Python async function that receives the AgentState,
-does its work, and returns a dict of state updates.
-
-The compiled 'analysis_graph' object at the bottom of this file
-is imported by the Celery task (app/tasks.py) and invoked when
-a new analysis job starts.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: graph.py
+Structure: StateGraph build script linking Code Analysis, Security, Remediation, and PR Summary nodes with branching conditions.
+Methods used: code_analysis_node, security_node, remediation_node, pr_summary_node, build_graph.
 """
 
-from typing import Dict, Any
 from langgraph.graph import StateGraph, END
-from app.agents.state import AgentState
-from app.agents.code_analysis import run_code_analysis
-from app.agents.security_vuln import run_security_vuln
-from app.linters import run_python_linters, run_java_linters
 from loguru import logger
 
-async def run_linters(state: AgentState) -> dict:
+from app.agents.state import AgentState
+from app.agents.nodes import (
+    run_code_analysis,
+    run_security_vuln,
+    run_remediation,
+    run_pr_summary,
+)
+from app.linters import run_python_linters, run_java_linters
+
+
+# ─── Stage 1: Linters ─────────────────────────────────────────────────────────
+
+async def linters_node(state: AgentState) -> dict:
     """
-    LangGraph node to run static analysis tools before the LLMs.
-    Populates the 'linter_output' field in the state.
+    Runs static analysis tools (Bandit, Pylint, Radon for Python;
+    regex heuristics for Java) before the LLM agents.
     """
-    logger.info(f"[STAGE 1/3] Running linters for session {state.get('session_id')}")
-    print(f"[GRAPH][LINTERS] Starting for session {state.get('session_id')}", flush=True)
     language = state.get("language", "python").lower()
     code = state.get("code", "")
-    
+    logger.info(f"[STAGE 1/5] Linters — language={language}, session={state.get('session_id')}")
     try:
         if language == "python":
-            results = await run_python_linters(code)
-            print(f"[GRAPH][LINTERS] Python linters done. Keys: {list(results.keys())}", flush=True)
-            return {"linter_output": results}
+            return {"linter_output": await run_python_linters(code)}
         elif language == "java":
-            results = await run_java_linters(code)
-            print(f"[GRAPH][LINTERS] Java linters done.", flush=True)
-            return {"linter_output": results}
-        else:
-            print(f"[GRAPH][LINTERS] Unsupported language: {language}", flush=True)
-            return {"linter_output": {"error": f"Unsupported language: {language}"}}
+            return {"linter_output": await run_java_linters(code)}
+        return {"linter_output": {"error": f"Unsupported language: {language}"}}
     except Exception as e:
         logger.error(f"Linters failed: {e}")
-        print(f"[GRAPH][LINTERS] EXCEPTION: {e}", flush=True)
         return {"linter_output": {"error": str(e)}}
 
-async def run_code_analysis_node(state: AgentState) -> dict:
-    """Wrapper with logging."""
-    logger.info(f"[STAGE 2/3] Code Analysis Agent for session {state.get('session_id')}")
-    print(f"[GRAPH][CODE_ANALYSIS] Starting...", flush=True)
+
+# ─── Thin wrappers: inject stage logging without polluting node files ──────────
+
+async def code_analysis_node(state: AgentState) -> dict:
+    """
+    Executes the Code Analysis agent node to detect code smells, anti-patterns, and linting rule violations.
+    """
+    logger.info(f"[STAGE 2/5] Code Analysis — session={state.get('session_id')}")
     result = await run_code_analysis(state)
-    ca = result.get('code_analysis_result')
-    print(f"[GRAPH][CODE_ANALYSIS] Done. quality_score={getattr(ca, 'quality_score', 'N/A')}", flush=True)
+
+    # Inject real Radon metrics (cyclomatic complexity, LOC) into the result
+    # so the UI never shows placeholder zeros.
+    ca = result.get("code_analysis_result")
+    linter_out = state.get("linter_output", {})
+    if ca and "radon" in linter_out and isinstance(linter_out["radon"], dict):
+        radon = linter_out["radon"]
+        max_cc = max(
+            (b.get("complexity", 0)
+             for blocks in radon.get("cc", {}).values() if isinstance(blocks, list)
+             for b in blocks if isinstance(b, dict)),
+            default=0,
+        )
+        ca.complexity_score.cyclomatic = max_cc
+        ca.complexity_score.lines_of_code = sum(
+            s.get("loc", 0)
+            for s in radon.get("raw", {}).values() if isinstance(s, dict)
+        )
     return result
 
-async def run_security_vuln_node(state: AgentState) -> dict:
-    """Wrapper with logging."""
-    logger.info(f"[STAGE 3/3] Security Vulnerability Agent for session {state.get('session_id')}")
-    print(f"[GRAPH][SECURITY] Starting...", flush=True)
-    result = await run_security_vuln(state)
-    sa = result.get('security_analysis_result')
-    print(f"[GRAPH][SECURITY] Done. security_score={getattr(sa, 'security_score', 'N/A')}", flush=True)
-    return result
+
+async def security_node(state: AgentState) -> dict:
+    """
+    Executes the Security agent node to detect OWASP vulnerabilities, injection risks, and bad cryptography.
+    """
+    logger.info(f"[STAGE 3/5] Security — session={state.get('session_id')}")
+    return await run_security_vuln(state)
+
+
+async def remediation_node(state: AgentState) -> dict:
+    """
+    Executes the Remediation agent node to formulate concrete code fixes and remediation advice based on findings.
+    """
+    logger.info(f"[STAGE 4/5] Remediation — session={state.get('session_id')}")
+    return await run_remediation(state)
+
+
+async def pr_summary_node(state: AgentState) -> dict:
+    """
+    Executes the PR Summary agent node to synthesize all findings into a structured markdown pull-request review comment.
+    """
+    logger.info(f"[STAGE 5/5] PR Summary — session={state.get('session_id')}")
+    return await run_pr_summary(state)
+
+
+# ─── Conditional routing (MARATHON pattern) ────────────────────────────────────
+
+def route_after_security(state: AgentState) -> str:
+    """
+    If both agents found zero findings → skip Remediation (save one LLM call).
+    If any finding exists → run Remediation so developers get concrete fixes.
+    """
+    ca = state.get("code_analysis_result")
+    sa = state.get("security_analysis_result")
+    has_findings = bool(
+        (ca and ca.findings) or
+        (sa and sa.vulnerabilities)
+    )
+    target = "remediation" if has_findings else "pr_summary"
+    logger.info(f"[ROUTER] has_findings={has_findings} → routing to '{target}'")
+    return target
+
+
+# ─── Graph assembly ────────────────────────────────────────────────────────────
 
 def build_analysis_graph():
     """
-    Builds and compiles the LangGraph pipeline for code review and security analysis.
-    Pipeline: run_linters -> code_analysis -> security_vuln -> END
+    Builds and compiles the LangGraph pipeline.
+
+    Pipeline (sequential with one conditional shortcut):
+      linters → code_analysis → security_vuln
+                                     ├── (findings)  → remediation → pr_summary → END
+                                     └── (clean)                  → pr_summary → END
     """
     builder = StateGraph(AgentState)
-    
-    # Add nodes
-    builder.add_node("run_linters", run_linters)
-    builder.add_node("code_analysis", run_code_analysis_node)
-    builder.add_node("security_vuln", run_security_vuln_node)
-    
-    # Sequential pipeline: linters -> code analysis -> security -> END
+
+    # Register nodes
+    builder.add_node("run_linters",    linters_node)
+    builder.add_node("code_analysis",  code_analysis_node)
+    builder.add_node("security_vuln",  security_node)
+    builder.add_node("remediation",    remediation_node)
+    builder.add_node("pr_summary",     pr_summary_node)
+
+    # Fixed edges
     builder.set_entry_point("run_linters")
-    builder.add_edge("run_linters", "code_analysis")
+    builder.add_edge("run_linters",   "code_analysis")
     builder.add_edge("code_analysis", "security_vuln")
-    builder.add_edge("security_vuln", END)
-    
+
+    # Conditional edge: skip remediation for clean code
+    builder.add_conditional_edges(
+        "security_vuln",
+        route_after_security,
+        {
+            "remediation": "remediation",
+            "pr_summary":  "pr_summary",
+        },
+    )
+
+    builder.add_edge("remediation", "pr_summary")
+    builder.add_edge("pr_summary",  END)
+
     return builder.compile()
 
-# Expose a compiled graph instance
+
 analysis_graph = build_analysis_graph()
-print("[GRAPH] LangGraph pipeline compiled successfully.", flush=True)

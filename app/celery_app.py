@@ -1,23 +1,11 @@
 """
-app/celery_app.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Creates and configures the Celery background task queue.
-         Celery is what makes code analysis run in the BACKGROUND so that
-         the API can respond to the user immediately with a session_id,
-         instead of making them wait 60+ seconds for AI agents to finish.
-
-HOW IT WORKS:
-  1. User submits code → API returns session_id immediately (202 Accepted)
-  2. API enqueues a 'run_full_analysis' task onto the Redis queue
-  3. A Celery worker process picks up the task and runs all AI agents
-  4. Results are stored in Redis when done
-  5. User polls GET /api/v1/status/{session_id} to check progress
-
-TO START A WORKER:
-  celery -A app.celery_app worker --concurrency=2 -l info
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: celery_app.py
+Structure: Celery instance declaration configuring Redis broker and result backend URLs.
+Methods used: None (module initialization and settings binding).
 """
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
 from celery import Celery
 from app.config import get_settings
 
@@ -49,7 +37,7 @@ celery_app = Celery(
     "ai_code_review",
     broker=settings.celery_broker_url,
     backend=settings.celery_result_backend,
-    include=["app.tasks.analysis"],
+    include=["app.tasks"],
 )
 
 celery_app.conf.update(
@@ -63,6 +51,6 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     result_expires=3600,
     task_routes={
-        "app.tasks.analysis.*": {"queue": "analysis"},
+        "app.tasks.*": {"queue": "analysis"},
     },
 )

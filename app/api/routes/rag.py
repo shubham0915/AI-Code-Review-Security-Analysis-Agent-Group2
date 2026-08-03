@@ -1,7 +1,7 @@
 """
-app/api/routes/rag.py — RAG Conversational Assistant endpoint.
-
-POST /api/v1/rag/query
+About this file: rag.py
+Structure: FastAPI router taking natural language security questions and returning OWASP documentation answers.
+Methods used: get_query_engine, query_assistant.
 """
 
 from __future__ import annotations
@@ -16,16 +16,25 @@ router = APIRouter(prefix="/api/v1/rag", tags=["RAG Assistant"])
 
 
 class QueryRequest(BaseModel):
+    """
+    Represents the QueryRequest entity.
+    """
     question: str
     top_k: int = 3
 
 
 class SourceNode(BaseModel):
+    """
+    Represents the SourceNode entity.
+    """
     text: str
     score: float | None = None
 
 
 class QueryResponse(BaseModel):
+    """
+    Represents the QueryResponse entity.
+    """
     answer: str
     sources: list[SourceNode]
 
@@ -35,6 +44,9 @@ _query_engine = None
 
 
 def get_query_engine(top_k: int = 3):
+    """
+    Initializes and returns a cached Llamadex or vector query engine for searching the OWASP security knowledge base.
+    """
     global _query_engine
     if _query_engine is None:
         logger.info("Initializing RAG query engine...")
@@ -47,6 +59,9 @@ def get_query_engine(top_k: int = 3):
 
 @router.post("/query", response_model=QueryResponse)
 async def query_assistant(request: QueryRequest) -> QueryResponse:
+    """
+    Accepts a natural language question and queries the RAG vector index for relevant OWASP remediation guidance.
+    """
     try:
         engine = get_query_engine(top_k=request.top_k)
         response = engine.query(request.question)

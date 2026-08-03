@@ -23,9 +23,9 @@
 
 ---
 
-## 🛑 Current Project State & Architecture Evolution
+## 🏆 Current Project State & Architecture Evolution
 
-> **NOTE:** The architecture and structure detailed below represent the **exact working state** of the project today (Milestone 1). All future aspects, pipelines, and agents defined *after* the Table of Contents represent the complete long-term vision of the platform.
+> **NOTE:** The architecture and structure detailed below represent the **exact working state** of the project today (**Milestone 1, 2, 3, and 4 Completed!**). Our multi-agent review pipeline, resilient OWASP RAG engine, Intent Gatekeeper guardrails, stateful conversational chat assistant, and comprehensive test suites (49 passing tests) are fully functional.
 
 ### 🏗️ Architecture Evolution (How We Built This)
 
@@ -35,65 +35,81 @@
 | **Python Syntax Validation** | **`ast.parse()`:** Built-in Python standard library used to parse the code into an Abstract Syntax Tree. | **`ast.parse()`:** (Unchanged). It remains the fastest, most precise, and natively supported way to check Python syntax in a Python backend. | **Linting integration:** Adding `ruff` or `flake8` to detect deeper logical errors (e.g. unused imports, bad scoping) rather than just syntax formatting. |
 | **Java Syntax Validation** | **Regex Heuristics & `javac` Subprocess:** Initially just counted `{}` braces. Then upgraded to writing temporary files to disk and booting up the heavy Java Compiler (`javac`). *Flaw:* Very slow and requires the server to have a Java JDK installed. | **`javalang` (Pure Python AST):** We replaced the heavy `javac` subprocess with a lightweight, pure Python library. It instantly parses Java code in-memory just like Python's `ast.parse()`, with 0 millisecond delay. | **Tree-sitter:** Upgrading to `tree-sitter-java`, which is the industry standard (used by VS Code / GitHub) for ultra-fast, robust, error-tolerant syntax parsing. |
 | **File Upload Security** | **Blind Extension Trust:** Relied purely on the uploaded file's extension (e.g. `.py` was assumed to be Python). *Flaw:* Vulnerable to spoofing (e.g., uploading a `virus.exe` renamed to `main.py`). | **Magic Byte Content Sniffing:** We pass the raw file bytes through Magika AI. If the file claims to be Python (`.py`) but the AI detects C++ or Executable binaries, we instantly block it with an `Extension Mismatch` error. | **Deep Content Scanning:** Pre-scanning the file for known malware signatures or shell-code patterns before even running the language detection layer. |
-| **UI Gatekeeper UX** | **Reactive Validation:** The "Submit" button was always clickable, but would throw an error *after* you clicked it if the code was invalid. | **Proactive Fail-Fast UX:** The "Submit" buttons are now dynamically bound to the live syntax state. If there is a syntax error or mismatch, the buttons become **completely disabled and greyed out**. | **Inline Editor Diagnostics:** Highlighting the exact character inside the Monaco code editor with a red squiggly line, rather than just showing the error below the editor. |
-| **RAG Chunking Strategy** | **`SentenceSplitter`:** Chunked markdown files by exactly 512 tokens. *Flaw:* Cut technical documents randomly in the middle of sections, causing the AI to lose critical `## Headers` and structural context. | **`MarkdownNodeParser`:** Reads the raw `.md` file structure. Groups chunks logically by headers and bullet points. Automatically injects the structural header path directly into the chunk's AI context metadata. | **Semantic Chunking:** Passing the documents through an Embedding Model during chunking to dynamically detect and split paragraphs exactly when the "topic" logically shifts. |
-| **Vector Embedding & Storage** | **Cloud APIs (OpenAI / Gemini):** Sending chunks over the internet to be embedded, requiring API keys, recurring costs, and exposing proprietary security guidelines to external servers. | **Local Embeddings (Ollama + ChromaDB):** Using local `nomic-embed-text` (a RAG-optimized model) to convert chunks into mathematical vectors for free, and storing them in an embedded `ChromaDB` SQLite-like local database. | **Dedicated Vector Cloud:** Using a dedicated, managed Vector Database (like Pinecone or Qdrant) if the knowledge base scales to millions of documents requiring distributed enterprise search. |
+| **Multi-Agent Orchestration (Milestone 3)** | **Monolithic Procedural Scripts:** Tying prompt outputs together sequentially in one large functional block without modular boundaries or state persistence. | **Modular LangGraph State Machine:** Separated responsibilities into standalone nodes (`code_analysis.py`, `security_vuln.py`, `remediation.py`, `pr_summary.py`) orchestrated by a centralized state graph with auto-retry loops and explicit scoring fallbacks. | **Dynamic Agent Routing:** Automatically activating or skipping specific analysis nodes based on file types and preliminary AST complexity scoring. |
+| **Resilient Vector RAG (Milestones 2 & 3)** | **Single Cloud Provider Dependency:** Relying solely on cloud vector APIs that hang during outages or network disconnections. | **Proactive Probe & HuggingFace Fallback:** Implemented an automated connection probe with exponential backoff that dynamically drops back to local HuggingFace embedding calculations (`nomic-embed-text` / ChromaDB) when cloud endpoints degrade. | **Semantic Re-ranking & Chunking:** Integrating specialized Cohere re-ranking algorithms over dynamic semantic chunk boundaries. |
+| **Intent Guardrails (Milestone 4)** | **Unrestricted Task Queueing:** Passing any string directly to background workers, wasting Celery CPU cycles and tokens on non-code prompt injections and random spam. | **Two-Stage Gatekeeper & Fail-Open Intent Guardrail:** Instant AST syntax verification (<1ms) intercepts invalid code first. Valid syntax undergoes fast LLM intent classification (<500ms). Engineered to **fail open** during network timeouts to ensure high availability. | **Embedding Distance Guardrails:** Replacing conversational prompt classification with instant vector-distance filtering against known prompt injection embeddings. |
+| **Stateful Conversational Memory (Milestone 4)** | **Stateless API Chat Routing:** Asking follow-up questions over HTTP resulted in context resets where the model forgot previous conversational turns and underlying code review defects. | **LangGraph MemorySaver & Cache Injection:** Linked chat checkpointers directly to session IDs (`session:{session_id}:result`), enabling multi-turn conversations with rich recall over static findings and remediation proposals. | **Cross-Session Project Memory:** Expanding conversational memory across entire repository histories rather than isolating context to a single code submission file. |
+| **Code Documentation & Setup Standards** | **Inconsistent Docstrings:** Scattered inline comments with placeholder descriptions and informal setup notes. | **Structured Project-Wide Docstrings:** Standardized all 29 Python files across `app/` and `frontend/` to strictly contain structured header manifests (`About this file`, `Structure`, `Methods used`) plus copy-paste execution manuals (`HOW_TO_RUN.md`, `UI_TEST_CASES.md`). | **Automated Sphinx / MkDocs Site:** Auto-generating searchable HTML docs directly from our standardized Python header structures in CI/CD pipeline runs. |
 
-### 📁 Project Structure (Current State)
+### 📁 Project Structure (Current State — Milestones 1 to 4)
 
 ```text
 AI-Code-Review-Security-Analysis-Agent-Group2/
 │
-├── 📄 README.md                    # Main project documentation & setup guide
-├── 📄 requirements.txt             # All Python package dependencies (pip install -r)
-├── 📄 pyproject.toml               # Project metadata & tool configuration (pytest, linters)
-├── 📄 uv.lock                      # Locked dependency versions for reproducible installs
-├── 📄 .env.example                 # Template showing all required environment variables
-├── 📄 .env                         # Your actual secrets/settings (⚠️ NOT pushed to GitHub)
-├── 📄 .gitignore                   # Tells Git which files/folders to never push
+├── 📄 README.md                    # Main project documentation & comprehensive platform roadmap
+├── 📄 HOW_TO_RUN.md                # 🚀 3-Terminal execution guide & cleanup commands
+├── 📄 UI_TEST_CASES.md             # 🧪 Curated copy-paste test scenarios (SQLi, Code Smells, Guardrail checks)
+├── 📄 requirements.txt             # All Python package dependencies (pip install -r requirements.txt)
+├── 📄 pyproject.toml               # Project metadata & tool configuration (pytest, coverage, linters)
+├── 📄 .env.example                 # Template showing all required environment variables & provider settings
+├── 📄 .env                         # Your active environment configuration (⚠️ NEVER pushed to Git)
 │
-├── 📁 .github/
-│   └── 📁 workflows/
-│       └── 📄 ci.yml               # GitHub Actions — auto-runs tests on every push
-│
-├── 📁 app/                         # 🏗️ Core FastAPI Backend Application
-│   ├── 📄 main.py                  # App entry point — registers all routes, starts server
-│   ├── 📄 config.py                # Reads .env variables into a typed Settings object
-│   ├── 📄 celery_app.py            # Creates the Celery worker instance connected to Redis
+├── 📁 app/                         # 🏗️ Core FastAPI & Multi-Agent Backend Pipeline
+│   ├── 📄 main.py                  # App entry point — mounts routers, middleware, Logfire, and CORS
+│   ├── 📄 config.py                # Pydantic Settings binding environment parameters with robust defaults
+│   ├── 📄 celery_app.py            # Celery instance configuration mapping Redis brokers & named queue routes
+│   ├── 📄 tasks.py                 # Celery asynchronous worker instructions executing LangGraph analysis jobs
+│   ├── 📄 cache.py                 # Redis caching abstraction with zero-infra in-memory dictionary fallback
+│   ├── 📄 llm.py                   # Model provider factory (Gemini / Ollama / Fast & Heavy model tiering)
+│   ├── 📄 guardrails.py            # Milestone 4 Gatekeeper: fast intentionality check & prompt spam filtering
+│   ├── 📄 linters.py               # Static AST wrapper suite executing Bandit, Pylint, Radon, and Java scanners
+│   ├── 📄 validators.py            # Ultra-fast syntax gatekeepers (`ast.parse` & `javalang`) + Magika detector
+│   ├── 📄 tracing.py               # Distributed observability instrumenting Logfire spans & LangSmith tracking
+│   ├── 📄 models.py                # Pydantic schemas formatting inputs, findings, PR scorecards, & chat packets
 │   │
-│   ├── 📁 api/routes/              # HTTP API Layer (FastAPI Routers)
-│   │   ├── 📄 health.py            # GET /health — checks if server is alive
-│   │   ├── 📄 submit.py            # POST /submit/paste & /submit/file — receives code
-│   │   ├── 📄 status.py            # GET /status/{id} — polls background job progress
-│   │   ├── 📄 result.py            # GET /result/{id} — fetches completed analysis output
-│   │   └── 📄 rag.py               # POST /rag/query — queries the OWASP knowledge base
+│   ├── 📁 agents/                  # 🤖 LangGraph Multi-Agent Orchestration Engine (Milestone 3 & 4)
+│   │   ├── 📄 graph.py             # Core StateGraph compiling static analysis with LLM review nodes & fallbacks
+│   │   ├── 📄 chat_graph.py        # Milestone 4 stateful conversational graph utilizing MemorySaver checkpoints
+│   │   ├── 📄 state.py             # Typed dictionary definitions managing multi-node pipeline transitions
+│   │   └── 📁 nodes/               # Modular single-responsibility AI Review Agents (MARATHON-inspired structural style)
+│   │       ├── 📄 code_analysis.py # Node detecting maintainability issues, code smells, and Radon/Pylint warnings
+│   │       ├── 📄 security_vuln.py # Node evaluating OWASP Top 10 vulnerabilities and Bandit cryptographic risks
+│   │       ├── 📄 remediation.py   # Node formulating production-grade corrected snippets and secure replacements
+│   │       └── 📄 pr_summary.py    # Node synthesizing comprehensive markdown pull request scorecards & badges
 │   │
-│   ├── 📄 cache.py                 # Session & Result Storage (Redis + memory fallback)
-│   ├── 📄 llm.py                   # LLM Provider Abstraction (Ollama / Gemini)
-│   ├── 📄 models.py                # Pydantic Data Models (session, findings, report)
-│   ├── 📄 rag.py                   # RAG Pipeline (chunking, embedding, indexing)
-│   ├── 📄 tasks.py                 # Celery Background Workers (runs the analysis pipeline)
-│   ├── 📄 linters.py               # Static Analysis Wrappers (Bandit, Pylint, PMD, etc.)
-│   └── 📄 validators.py            # Syntax Validation & Auto-Language Detection
+│   ├── 📁 services/rag/            # 📚 Resilient RAG Security Embedding Engine (Milestones 2 & 3)
+│   │   ├── 📄 index.py             # Vector storage interface building and querying local ChromaDB indexes
+│   │   ├── 📄 retriever.py         # Hybrid contextual search logic fetching OWASP mitigation documentation
+│   │   └── 📄 embeddings.py        # Proactive connection probings with automatic local HuggingFace fallbacks
+│   │
+│   └── 📁 api/routes/              # HTTP API Layer (FastAPI Routers)
+│       ├── 📄 health.py            # GET /health/ready — verifies active Redis, DB, & LLM connectivity
+│       ├── 📄 submit.py            # POST /submit/paste & /file — validates syntax/intent & queues Celery jobs
+│       ├── 📄 status.py            # GET /status/{id} — polls async job processing milestones from Redis cache
+│       ├── 📄 result.py            # GET /result/{id} — retrieves complete multi-agent scorecards & code diffs
+│       ├── 📄 chat.py              # POST /chat — Milestone 4 stateful session conversations & AI explanations
+│       └── 📄 rag.py               # POST /rag/query — standalone endpoint querying OWASP vector documentation
 │
-├── 📁 frontend/                    # 🖥️ Streamlit Developer Portal UI
-│   └── 📄 app.py                   # Full UI — tabs: Paste Code, Upload, History, Ask Assistant
+├── 📁 frontend/                    # 🖥️ Streamlit Interactive Developer Portal UI (Milestone 4)
+│   └── 📄 app.py                   # Multi-tab dashboard: Code Editor, Reports, Session Chat & Standalone local fallback
 │
-├── 📁 data/                        # 📚 Local Data Storage
-│   ├── 📁 knowledge_base/          # 12 OWASP Markdown security guideline documents
-│   └── 📁 chroma_db/               # ChromaDB vector store (264 embedded chunks)
+├── 📁 data/                        # 📚 Local Data & Vector Storage
+│   ├── 📁 knowledge_base/          # OWASP markdown guideline manuals (SQLi, Injection, Cryptography)
+│   └── 📁 chroma_db/               # SQLite-embedded ChromaDB vector store preserving embedded chunk collections
 │
-├── 📁 scripts/                     # 🔧 One-Time Setup & Utility Scripts
-│   ├── 📄 build_index.py           # Embeds knowledge_base docs into ChromaDB
-│   ├── 📄 download_kb.py           # Downloads OWASP docs if not already present
-│   └── 📄 test_rag.py              # CLI test — asks the RAG a question to verify it works
+├── 📁 docs/                        # 📝 Historical Engineering Documentation & Debugging Journals
+│   ├── 📄 DEBUGGING_SESSION_NOTES.md # Complete problem-solving record covering Milestones 1 to 4 challenges
+│   ├── 📄 RESEARCH_AND_REPORTS.md    # Exhaustive technical background, research literature, and design choices
+│   └── 📄 SYSTEM_DESIGN.md         # Deep-dive structural schemas and component interaction pipelines
 │
-└── 📁 tests/                       # 🧪 Automated Test Suite
-    ├── 📁 unit/
-    │   ├── 📄 test_code_validator.py   # 15 tests for Python/Java syntax validation
-    │   └── 📄 test_frontend.py         # Streamlit UI startup & session state tests
-    └── 📁 integration/
-        └── 📄 test_submit_api.py       # End-to-end tests for the /submit API endpoints
+├── 📁 scripts/                     # 🔧 One-Time Setup & CLI Utility Scripts
+│   ├── 📄 build_index.py           # Embeds knowledge_base documents into local ChromaDB vector space
+│   ├── 📄 download_kb.py           # Downloads baseline OWASP security documents if absent
+│   └── 📄 test_rag.py              # CLI utility evaluating vector semantic retrieval behavior
+│
+└── 📁 tests/                       # 🧪 Automated Combined Test Suite (49/49 Passing)
+    ├── 📁 unit/                    # Fast unit evaluations covering validators, linters, guardrails, & memory graphs
+    └── 📁 integration/             # End-to-end API simulation tests mocking Celery queues and Redis cache interactions
 ```
 
 ---
@@ -409,22 +425,17 @@ flowchart TD
         F2["Prometheus Metrics\n/metrics endpoint"]
     end
 
-    subgraph REDIS["Redis (Docker)\nlocalhost:6379"]
-        R1["DB 0 — Celery Broker\nTask messages"]
-        R2["DB 1 — Celery Results\nTask outcomes"]
+    subgraph REDIS["Redis Server / In-Memory Fallback\nlocalhost:6379"]
+        R1["DB 0 — Celery Broker\nTask messages on 'analysis' queue"]
+        R2["DB 1 — Celery Results\nTask outcomes & scorecards"]
         R3["Keys: session:{uuid}\nTTL: 30 minutes"]
         R4["Keys: result:{uuid}\nTTL: 1 hour"]
         R5["Keys: cache:{sha256}\nDedup, TTL: 1 hour"]
-        R6["Keys: embed:{sha256}\nTTL: 24 hours"]
+        R6["Keys: checkpoint:{uuid}\nLangGraph Conversational MemorySaver"]
     end
 
-    subgraph CELERY["Celery Worker Process"]
-        CW["Worker (concurrency=2)\nPulls from DB0\nWrites to DB1, R3, R4"]
-    end
-
-    subgraph MONITORING["Monitoring Stack (Docker)"]
-        M1["Prometheus\nlocalhost:9090\nScrapes /metrics every 15s"]
-        M2["Grafana\nlocalhost:3001\nDashboards + Alerts"]
+    subgraph CELERY["Celery Worker Process (-Q analysis,celery)"]
+        CW["Worker Process\nPulls from DB0 'analysis'\nWrites to DB1, R3, R4, R6"]
     end
 
     C1 -->|"HTTP REST"| F1
@@ -433,51 +444,96 @@ flowchart TD
     F1 -->|"Queue task"| R1
     R1 --> CW
     CW -->|"Write result"| R4
-    CW -->|"Update session"| R3
-    CW -->|"Cache embeddings"| R6
-    F1 -->|"Read session/result"| R3 & R4
-    F2 --> M1 --> M2
+    CW -->|"Update session & chat checkpoints"| R3 & R6
+    F1 -->|"Read session/result/chat"| R3 & R4 & R6
 ```
 
 ---
 
-## ✅ What Is Implemented (Milestone 1)
+## ✅ What Is Implemented (Milestones 1 – 4 Completed!)
 
-This section describes **exactly what code exists today**, what it does, and which files implement it.
+This section describes **exactly what code exists today**, what it does, and which files implement it across our completed milestones.
 
-### Module 1 — Code Submission Module
+### Module 1 — Code Submission & Syntax Gatekeeper (Milestone 1)
 
-> **Purpose:** Accept code from a developer (paste or file upload), validate it, create a session, and queue it for analysis.
+> **Purpose:** Accept code from developers (paste or file upload), enforce strict zero-cost syntax Gatekeeping, create a session, and queue it for analysis.
 
 | Component | File | What It Does |
 |---|---|---|
-| Paste submission API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/paste` — accepts JSON `{code, language}` |
-| File upload API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/file` — accepts `.py` or `.java` multipart |
-| Validate-only API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/validate` — syntax check, no task queued |
-| Language detector | [`app/validators.py`](app/validators.py) | Extension → Pygments → keyword heuristics → default Python |
-| Code validator | [`app/validators.py`](app/validators.py) | Python: `ast.parse()` / Java: brace balance + class check |
-| Status polling | [`app/api/routes/status.py`](app/api/routes/status.py) | `GET /api/v1/status/{session_id}` — reads Redis session state |
-| Result retrieval | [`app/api/routes/result.py`](app/api/routes/result.py) | `GET /api/v1/result/{session_id}` — returns completed analysis |
-| Health check | [`app/api/routes/health.py`](app/api/routes/health.py) | `GET /health/ready` — checks Redis + Ollama connectivity |
-
-**Key implemented behaviours:**
-- Deduplication: identical code submissions return a cached result without re-running analysis
-- Size limits: max 10,000 lines, max 5 MB file
-- File type validation: only `.py` and `.java` accepted
-- Estimated time calculation: dynamically computed from lines of code
-- Session lifecycle: `queued → running → completed | failed`
+| Paste submission API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/paste` — validates syntax & intent, queues background review |
+| File upload API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/file` — multipart upload with instant Magika content verification |
+| Validate-only API | [`app/api/routes/submit.py`](app/api/routes/submit.py) | `POST /api/v1/submit/validate` — syntax and guardrail check without Celery task overhead |
+| Language detector | [`app/validators.py`](app/validators.py) | Magika ML prediction → Extension fallback → Keyword heuristics → Python default |
+| Syntax Gatekeeper | [`app/validators.py`](app/validators.py) | Python `ast.parse()` / Java pure-Python `javalang` AST parsing (<1ms validation) |
+| Status polling | [`app/api/routes/status.py`](app/api/routes/status.py) | `GET /api/v1/status/{session_id}` — returns live processing lifecycle state |
+| Result retrieval | [`app/api/routes/result.py`](app/api/routes/result.py) | `GET /api/v1/result/{session_id}` — retrieves completed analysis scorecard and code diffs |
 
 ---
 
-### Core Infrastructure
+### Module 2 — Resilient OWASP Security RAG Knowledge Engine (Milestones 2 & 3)
+
+> **Purpose:** Provide grounded, verifiable security remediation guidance from official OWASP manuals while guaranteeing continuous offline reliability.
 
 | Component | File | What It Does |
 |---|---|---|
-| FastAPI App | [`app/main.py`](app/main.py) | App factory, CORS, Prometheus middleware, lifespan hooks |
-| Settings | [`app/config.py`](app/config.py) | Pydantic-settings, all config from `.env` with typed defaults |
-| Redis Client | [`app/cache.py`](app/cache.py) | Async `redis.asyncio` singleton, `get/set/delete` helpers |
-| Celery App | [`app/celery_app.py`](app/celery_app.py) | Task queue factory, Redis broker/backend, analysis queue routing |
-| Analysis Task | [`app/tasks.py`](app/tasks.py) | Celery task stub — session state machine, retry logic (agents wired in M3) |
+| Vector Storage Interface | [`app/services/rag/index.py`](app/services/rag/index.py) | Abstraction managing local embedded ChromaDB index collections |
+| Context Retriever | [`app/services/rag/retriever.py`](app/services/rag/retriever.py) | Hybrid semantic querying linking static findings with relevant OWASP mitigation docs |
+| Resilient Embeddings | [`app/services/rag/embeddings.py`](app/services/rag/embeddings.py) | Proactive provider connection probing with backoff retries and **automatic fallback to local HuggingFace embeddings** (`nomic-embed-text`) during cloud degradations |
+| Standalone RAG Route | [`app/api/routes/rag.py`](app/api/routes/rag.py) | `POST /api/v1/rag/query` — dedicated endpoint to interrogate OWASP documentation |
+
+---
+
+### Module 3 — Modular Multi-Agent Review & LangGraph Orchestration (Milestone 3)
+
+> **Purpose:** Coordinate specialized single-responsibility AI nodes with static AST linters to uncover maintainability defects, OWASP security threats, and formulate concrete corrected code.
+
+| Component | File | What It Does |
+|---|---|---|
+| LangGraph State Machine | [`app/agents/graph.py`](app/agents/graph.py) | Compiles Pylint/Bandit/Radon static outputs, schedules multi-agent tasks, and executes retry loops |
+| Typed Pipeline State | [`app/agents/state.py`](app/agents/state.py) | Strict TypedDict structures sharing AST output and AI scores across graph transitions |
+| Code Analysis Node | [`app/agents/nodes/code_analysis.py`](app/agents/nodes/code_analysis.py) | Evaluates complexity, naming, docstrings, and translates Radon/Pylint warnings into actionable findings |
+| Security Vulnerability Node | [`app/agents/nodes/security_vuln.py`](app/agents/nodes/security_vuln.py) | Uncovers OWASP Top 10 vulnerabilities (SQLi, Command Injection, SSRF, Hardcoded Secrets) |
+| Remediation Node | [`app/agents/nodes/remediation.py`](app/agents/nodes/remediation.py) | Synthesizes vulnerability findings and RAG guidelines to formulate drop-in replacement secure code |
+| PR Summary Node | [`app/agents/nodes/pr_summary.py`](app/agents/nodes/pr_summary.py) | Aggregates scorecards into structured GitHub Pull Request markdown comments |
+
+---
+
+### Module 4 — Intent Guardrails & Stateful Conversational UI (Milestone 4)
+
+> **Purpose:** Protect worker resources from prompt injection spam and deliver an interactive developer experience with conversational memory over past reviews.
+
+| Component | File | What It Does |
+|---|---|---|
+| Intent Guardrail Gatekeeper | [`app/guardrails.py`](app/guardrails.py) | Pre-queue checkpoint using lightweight LLM classification (`get_fast_llm()`) to block prompt injections and non-code inputs. Engineered to **fail open** on network timeouts |
+| Stateful Conversational Graph | [`app/agents/chat_graph.py`](app/agents/chat_graph.py) | LangGraph workflow utilizing `MemorySaver` checkpointers tied directly to `session_id`. Automatically injects Redis code review reports into conversational context |
+| Conversational Chat Route | [`app/api/routes/chat.py`](app/api/routes/chat.py) | `POST /api/v1/chat` — interactive chat endpoint allowing multi-turn discussions on discovered bugs |
+| Multi-Tab Developer Portal | [`frontend/app.py`](frontend/app.py) | Streamlit dashboard with dedicated tabs for Code Submission, Interactive Scorecard Modals, Session-Aware Chat Assistant, and RAG Knowledge queries |
+
+---
+
+### Core Infrastructure & Observability
+
+| Component | File | What It Does |
+|---|---|---|
+| FastAPI Server | [`app/main.py`](app/main.py) | Application lifecycle mounting routers, CORS policies, Logfire spans, and exception handlers |
+| Redis Abstraction | [`app/cache.py`](app/cache.py) | Async Redis connection management with automatic in-memory dictionary fallback when running offline |
+| Celery Background Worker | [`app/celery_app.py`](app/celery_app.py) | Configures message broker pipelines and routes jobs explicitly into dedicated `"analysis"` queues |
+| Observability Tracing | [`app/tracing.py`](app/tracing.py) | Embeds Logfire operational traces and LangSmith evaluation hooks across graph executions |
+
+---
+
+### Tests — 49/49 Passing ✅ (100% Green Suite)
+
+**Run:** `source .venv/bin/activate && python -m pytest tests/ -v`
+
+| Test Category | Test Count | What Is Tested |
+|---|---|---|
+| **Syntax Gatekeeper** (`test_code_validator.py`) | 15 tests | Valid Python/Java AST parsing, unbalanced brace detection, whitespace/empty input rejection, Magika language detection |
+| **Static Analysis Linters** (`test_linters.py`) | 5 tests | Direct AST wrapper evaluations for Bandit security scanning, Pylint inspections, and Radon cyclomatic complexity |
+| **Intent Guardrails** (`test_guardrails.py`) | 3 tests | Fast LLM intentionality acceptance on code, rejection of non-code prompt injections, and short-string edge cases |
+| **Multi-Agent Pipeline** (`test_agents.py` & `test_chat_graph.py`) | 2 tests | Fallback scoring behavior on malformed outputs, zero-issue handling, and conversational graph checkpointer verification |
+| **Frontend & Standalone Mode** (`test_frontend.py`) | 2 tests | Streamlit UI initialization, fallback local browser syntax validation without active backend servers |
+| **End-to-End API Integration** (`test_submit_api.py`) | 22 tests | Full FastAPI router verification mocking Celery queues, Redis caching, syntax gatekeeping, oversized payloads, and file uploads |
 
 ---
 
@@ -832,7 +888,7 @@ docker-compose ps    # Verify all containers are healthy
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Terminal 2: Celery worker
-celery -A app.celery_app worker --concurrency=2 -l info
+celery -A app.celery_app worker -Q analysis --pool=solo -l info
 
 # Terminal 3: Streamlit frontend
 streamlit run frontend/app.py
@@ -894,7 +950,7 @@ tests/unit/test_code_validator.py::TestLanguageDetector::test_detect_java_by_key
 
 ```mermaid
 gantt
-    title AI Code Review & Security Analysis Agent — 12-Week Delivery Plan
+    title AI Code Review & Security Analysis Agent — Delivery Roadmap
     dateFormat  YYYY-MM-DD
     axisFormat  %b %d
 
@@ -902,29 +958,29 @@ gantt
     Architecture & Design              :done, m1a, 2026-07-08, 5d
     Code Submission Module             :done, m1b, after m1a, 5d
     FastAPI + Redis + Docker           :done, m1c, 2026-07-08, 7d
-    Unit Tests (15/15)                 :done, m1d, after m1c, 3d
+    Syntax Gatekeepers & Unit Tests     :done, m1d, after m1c, 3d
 
-    section 🔄 Milestone 2: Knowledge Base & RAG
-    OWASP KB Download & Preprocessing  :active, m2a, 2026-07-20, 3d
-    Chunking & Embedding Pipeline      :m2b, after m2a, 4d
-    ChromaDB Indexing (28K chunks)     :m2c, after m2b, 3d
-    Hybrid Retrieval + Reranker        :m2d, after m2c, 4d
-    RAG Quality Evaluation             :m2e, after m2d, 2d
+    section ✅ Milestone 2: Resilient RAG
+    OWASP KB Download & Preprocessing  :done, m2a, 2026-07-20, 3d
+    Chunking & Embedding Pipeline      :done, m2b, after m2a, 4d
+    ChromaDB Indexing & Query Routes   :done, m2c, after m2b, 3d
+    Proactive Probe & HuggingFace Fallback:done, m2d, after m2c, 4d
 
-    section 📋 Milestone 3: Multi-Agent Pipeline
-    Code Analysis Agent                :m3a, 2026-08-03, 5d
-    Security Vulnerability Agent       :m3b, after m3a, 5d
-    Remediation Agent                  :m3c, after m3b, 4d
-    PR Summary Agent + LangGraph       :m3d, after m3c, 3d
-    Celery Pipeline Wiring             :m3e, after m3d, 3d
+    section ✅ Milestone 3: Multi-Agent Pipeline
+    Modular Agent Nodes Structure      :done, m3a, 2026-08-03, 5d
+    Code & Security Vuln Agents        :done, m3b, after m3a, 5d
+    Remediation & PR Summary Agents      :done, m3c, after m3b, 4d
+    LangGraph Orchestration Machine      :done, m3d, after m3c, 3d
+    Celery Named Queue Routing         :done, m3e, after m3d, 3d
 
-    section 📋 Milestone 4: Conversational UI
-    Conversational Assistant (RAG)     :m4a, 2026-08-24, 5d
-    Full Developer Portal UI           :m4b, after m4a, 7d
-    Report Export MD/JSON/PDF          :m4c, after m4b, 3d
+    section ✅ Milestone 4: Guardrails & Chat UI
+    Two-Stage Intent Guardrail Gatekeeper:done, m4a, 2026-08-15, 5d
+    MemorySaver Stateful Conversational Chat:done, m4b, after m4a, 5d
+    Multi-Tab Streamlit Developer Portal:done, m4c, after m4b, 5d
+    Project-Wide Structured Documentation:done, m4d, after m4c, 3d
 
-    section 📋 Milestone 5: Performance & Monitoring
-    Redis Caching + Optimization       :m5a, 2026-09-14, 4d
+    section 🔄 Milestone 5: Performance & Monitoring
+    Redis Caching + Optimization       :active, m5a, 2026-09-14, 4d
     Prometheus + Grafana Dashboards    :m5b, after m5a, 3d
     Full Test Suite (200 vuln files)   :m5c, after m5b, 5d
     RAGAS Evaluation                   :m5d, after m5c, 2d
@@ -939,12 +995,12 @@ gantt
 
 | # | Milestone | Weeks | Key Deliverables | Status |
 |---|---|---|---|---|
-| **M1** | Foundation & Code Submission | 1–2 | Project skeleton, FastAPI backend, Code Submission Module, 15 unit tests | ✅ **Complete** |
-| **M2** | OWASP Knowledge Base & RAG | 3–4 | ChromaDB with 28K OWASP chunks, hybrid retrieval (dense+BM25+RRF), cross-encoder reranker | 🔄 Next |
-| **M3** | Multi-Agent Pipeline | 5–6 | Code Analysis, Security Vuln, Remediation, PR Summary agents wired via LangGraph | 📋 Planned |
-| **M4** | Conversational UI | 7–8 | RAG chatbot with session memory, full dashboard UI, PDF/JSON/MD export | 📋 Planned |
-| **M5** | Performance & Monitoring | 9–10 | Redis caching, Grafana dashboards, RAGAS eval, 200-file vulnerability test suite | 📋 Planned |
-| **M6** | Production Hardening | 11–12 | JWT auth, input hardening, full CI/CD, incident runbook, final report | 📋 Planned |
+| **M1** | Foundation & Code Submission | 1–2 | Project skeleton, FastAPI backend, Syntax Gatekeeper, language detection | ✅ **Complete** |
+| **M2** | OWASP Knowledge Base & RAG | 3–4 | ChromaDB vector store, hybrid retrieval, proactive probe with HuggingFace embedding fallback | ✅ **Complete** |
+| **M3** | Modular Multi-Agent Pipeline | 5–6 | Modular single-responsibility nodes (MARATHON-inspired), LangGraph StateGraph orchestration, Celery custom routing | ✅ **Complete** |
+| **M4** | Guardrails & Conversational UI | 7–8 | Two-stage Intent Gatekeeper (fail-open), stateful conversational checkpointer (`MemorySaver`), multi-tab developer UI | ✅ **Complete** |
+| **M5** | Performance & Monitoring | 9–10 | Redis caching optimization, Grafana metrics dashboards, RAGAS eval, 200-file vulnerability evaluation suite | 🔄 Next |
+| **M6** | Production Hardening | 11–12 | JWT auth, input hardening, full CI/CD, incident runbook, final presentation documentation | 📋 Planned |
 
 ---
 

@@ -1,12 +1,8 @@
 """
-app/api/routes/submit.py — Code Submission Module (Module 1)
-
-Handles:
-  POST /api/v1/submit/paste    — Direct code paste
-  POST /api/v1/submit/file     — File upload (.py / .java)
-  GET  /api/v1/submit/validate — Syntax-only check (no analysis)
+About this file: submit.py
+Structure: FastAPI router handling payload validation, deduplication hashing, session initialization, and queue dispatch.
+Methods used: _cache_key, _create_session, validate_code_snippet, submit_code_paste, submit_code_file.
 """
-
 from __future__ import annotations
 
 import hashlib
@@ -34,6 +30,10 @@ settings = get_settings()
 
 # Helper: build a cache key for deduplication
 def _cache_key(code: str, language: str) -> str:
+    """
+    Generates a unique SHA-256 hash cache key based on the code content and language.
+    Used to deduplicate identical code submissions and return cached results.
+    """
     return "analysis:" + hashlib.sha256(f"{language}:{code}".encode()).hexdigest()
 
 
@@ -43,6 +43,10 @@ async def _create_session(
     language: Language,
     filename: str | None,
 ) -> SubmissionResponse:
+    """
+    Creates a new UUID session for the submitted code, stores the initial metadata in Redis,
+    and returns a standard SubmissionResponse object to the client.
+    """
     import json
     from datetime import datetime
 
@@ -80,11 +84,14 @@ async def _create_session(
 @router.post(
     "/paste",
     response_model=SubmissionResponse,
+    summary="Submit Code via Text Paste",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Submit code via direct paste",
-    description="Accepts raw source code as JSON. Returns a session ID for polling status.",
 )
-async def submit_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
+async def submit_code_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
+    """
+    Receives code via JSON payload, validates syntax and intent, and queues an asynchronous analysis task.
+    Returns the session_id to poll for results.
+    """
     language = request.language
     if language == Language.auto:
         language = detect_language(request.code, request.filename)
@@ -103,6 +110,17 @@ async def submit_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
             detail={
                 "message": "Syntax validation failed.",
                 "errors": [e.model_dump() for e in validation.errors],
+            },
+        )
+
+    from app.guardrails import validate_intent
+    is_valid_intent, intent_reason = await validate_intent(request.code)
+    if not is_valid_intent:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Intent validation failed. The input does not appear to be valid source code.",
+                "reason": intent_reason
             },
         )
 
@@ -154,14 +172,17 @@ async def submit_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
 @router.post(
     "/file",
     response_model=SubmissionResponse,
+    summary="Submit Code via File Upload",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Submit code via file upload",
-    description="Upload a .py or .java file for analysis. Max 5 MB.",
 )
-async def submit_file(
+async def submit_code_file(
     file: Annotated[UploadFile, File(description="Python or Java source file")],
     language: Annotated[Language, Form()] = Language.auto,
 ) -> SubmissionResponse:
+    """
+    Receives a source code file upload (e.g. .py or .java), validates syntax and intent,
+    and queues an asynchronous analysis task. Returns the session_id to poll for results.
+    """
     filename = file.filename or "uploaded_file"
     ext = os.path.splitext(filename)[1].lower()
     if ext not in settings.allowed_ext_list:
@@ -206,6 +227,17 @@ async def submit_file(
             },
         )
 
+    from app.guardrails import validate_intent
+    is_valid_intent, intent_reason = await validate_intent(code)
+    if not is_valid_intent:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "message": "Intent validation failed. The input does not appear to be valid source code.",
+                "reason": intent_reason
+            },
+        )
+
     submission = await _create_session(code, language, filename)
     from app.tasks import run_full_analysis
 
@@ -218,10 +250,13 @@ async def submit_file(
 @router.post(
     "/validate",
     response_model=SubmissionValidationResponse,
-    summary="Validate code syntax only",
-    description="Check if code is syntactically valid. No analysis task is queued.",
+    summary="Validate Code Snippet",
 )
-async def validate_only(request: CodeSubmissionRequest) -> SubmissionValidationResponse:
+async def validate_code_snippet(request: CodeSubmissionRequest) -> SubmissionValidationResponse:
+    """
+    Performs a lightweight syntax validation check without initiating a full analysis task.
+    Returns validation errors or success status.
+    """
     language = request.language
     if language == Language.auto:
         language = detect_language(request.code, request.filename)

@@ -1,8 +1,7 @@
 """
-app/api/routes/health.py — Health check endpoints.
-
-GET /health          → liveness (always returns ok)
-GET /health/ready    → readiness (checks Redis + LLM provider)
+About this file: health.py
+Structure: FastAPI route definitions verifying internal responsiveness and external dependencies (Redis, LLMs).
+Methods used: health, ready.
 """
 
 from fastapi import APIRouter
@@ -13,11 +12,23 @@ router = APIRouter(tags=["Health"])
 
 @router.get("/health", summary="Basic liveness check")
 async def health():
+    """
+    Returns a basic JSON response indicating the service is alive.
+    Used for basic load-balancer liveness checks.
+    """
     return {"status": "ok", "service": "AI Code Review & Security Analysis Agent"}
 
 
 @router.get("/health/ready", summary="Readiness check (Redis + LLM provider)")
 async def ready():
+    """
+    About this file: health.py
+    Structure: API Routes.
+    Methods used: health, ready.
+
+    Performs a deep health check of external dependencies (Redis and the LLM provider).
+    Returns 200 OK if all external services are reachable, else 503 Service Unavailable.
+    """
     from app.cache import get_redis_client, is_using_memory_fallback
     from app.config import get_settings
     from app.llm import get_provider_info

@@ -32,7 +32,8 @@ async def test_run_radon(mock_exec):
     mock_exec.return_value = mock_process
     
     result = await run_radon("test.py")
-    assert "test.py" in result
+    assert "cc" in result
+    assert "raw" in result
 
 @pytest.mark.asyncio
 @patch("app.linters.run_radon")

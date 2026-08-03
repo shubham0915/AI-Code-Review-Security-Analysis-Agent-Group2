@@ -1,7 +1,7 @@
 """
-app/api/routes/result.py — Retrieve completed analysis results.
-
-GET /api/v1/result/{session_id}
+About this file: result.py
+Structure: FastAPI route handler checking session completion states and returning full multi-agent findings JSON.
+Methods used: get_result.
 """
 
 from __future__ import annotations
@@ -23,6 +23,9 @@ router = APIRouter(prefix="/api/v1/result", tags=["Analysis Results"])
     description="Returns the complete multi-agent analysis result for a completed session.",
 )
 async def get_result(session_id: str) -> FullAnalysisResult:
+    """
+    Retrieves the full multi-agent review report from Redis for a successfully completed analysis session.
+    """
     redis = await get_redis_client()
 
     # Check session exists

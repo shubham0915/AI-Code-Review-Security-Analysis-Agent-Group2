@@ -1,28 +1,20 @@
 """
-app/linters.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Runs objective static analysis tools on code BEFORE the AI agents.
-         The linter output is passed as context to the LLMs so they can
-         focus on interpreting results instead of finding them from scratch.
-         This makes the AI faster, cheaper, and more accurate.
-
-TOOLS USED:
-  Python → Bandit (security), Pylint (quality), Radon (complexity)
-  Java   → PMD (stub — planned for a future milestone)
-
-HOW IT WORKS:
-  1. Write the code to a temporary file on disk
-  2. Run each tool as an async subprocess (all run in parallel)
-  3. Parse and return the JSON output
-  4. Always clean up the temp file, even if a tool crashes
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: linters.py
+Structure: Subprocess execution wrappers for external CLI linters including Pylint and Bandit, parsing output to structured findings.
+Methods used: run_pylint, run_bandit, run_linters.
 """
 
 import tempfile
 import asyncio
 import json
 import os
+import sys
 from typing import Dict, Any
+from app.tracing import traceable
+
+def _get_tool_path(tool_name: str) -> str:
+    """Resolve the absolute path to a tool in the current Python environment (.venv/bin)."""
+    return os.path.join(os.path.dirname(sys.executable), tool_name)
 
 
 # ─── PYTHON LINTERS ───────────────────────────────────────────────────────────
@@ -36,7 +28,7 @@ async def run_bandit(filepath: str) -> Dict[str, Any]:
     Returns parsed JSON output (list of security findings).
     """
     process = await asyncio.create_subprocess_exec(
-        'bandit', '-f', 'json', filepath,
+        _get_tool_path('bandit'), '-f', 'json', filepath,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
@@ -56,7 +48,7 @@ async def run_pylint(filepath: str) -> list[Dict[str, Any]]:
     Returns a list of message objects in JSON format.
     """
     process = await asyncio.create_subprocess_exec(
-        'pylint', '--output-format=json', filepath,
+        _get_tool_path('pylint'), '--output-format=json', filepath,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
@@ -76,18 +68,31 @@ async def run_radon(filepath: str) -> Dict[str, Any]:
     Lower complexity = easier to test and maintain.
     A score of A (1-5) is ideal; F (26+) means the code is extremely complex.
     """
-    process = await asyncio.create_subprocess_exec(
-        'radon', 'cc', '-j', filepath,
+    cc_process = await asyncio.create_subprocess_exec(
+        _get_tool_path('radon'), 'cc', '-j', filepath,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
-    stdout, _ = await process.communicate()
+    raw_process = await asyncio.create_subprocess_exec(
+        _get_tool_path('radon'), 'raw', '-j', filepath,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    stdout_cc, _ = await cc_process.communicate()
+    stdout_raw, _ = await raw_process.communicate()
     try:
-        return json.loads(stdout.decode('utf-8'))
+        return {
+            "cc": json.loads(stdout_cc.decode('utf-8')),
+            "raw": json.loads(stdout_raw.decode('utf-8'))
+        }
     except json.JSONDecodeError:
         return {"error": "Failed to parse radon output"}
 
 
+@traceable(
+    name="StaticAnalysis-Python",
+    run_type="tool",
+)
 async def run_python_linters(code: str) -> Dict[str, Any]:
     """
     Entry point for all Python static analysis.
@@ -123,20 +128,127 @@ async def run_python_linters(code: str) -> Dict[str, Any]:
 
 # ─── JAVA LINTERS ─────────────────────────────────────────────────────────────
 
-async def run_java_linters(code: str) -> Dict[str, Any]:
+import re as _re
+
+# Regex patterns for common Java security anti-patterns.
+# These are lightweight heuristics — not a replacement for PMD/SpotBugs,
+# but they give the LLM Security Agent something concrete to work with
+# without requiring a Java JDK on the host machine.
+_JAVA_SECURITY_PATTERNS = [
+    {
+        "pattern": _re.compile(r'String\s+\w*[Pp]assword\w*\s*=\s*"[^"]+"', _re.MULTILINE),
+        "issue": "Hardcoded password string literal detected",
+        "severity": "HIGH",
+        "owasp": "A02:2021 - Cryptographic Failures",
+        "cwe": "CWE-798",
+    },
+    {
+        "pattern": _re.compile(r'\.executeQuery\s*\(\s*"[^"]*"\s*\+', _re.MULTILINE),
+        "issue": "Potential SQL Injection — string concatenation in SQL query",
+        "severity": "CRITICAL",
+        "owasp": "A03:2021 - Injection",
+        "cwe": "CWE-89",
+    },
+    {
+        "pattern": _re.compile(r'Statement\.execute\w*\s*\([^)]*\+', _re.MULTILINE),
+        "issue": "Potential SQL Injection — dynamic SQL via Statement (use PreparedStatement)",
+        "severity": "CRITICAL",
+        "owasp": "A03:2021 - Injection",
+        "cwe": "CWE-89",
+    },
+    {
+        "pattern": _re.compile(r'printStackTrace\(\)', _re.MULTILINE),
+        "issue": "Stack trace printed to stdout — may expose internal paths and class names",
+        "severity": "LOW",
+        "owasp": "A09:2021 - Security Logging and Monitoring Failures",
+        "cwe": "CWE-209",
+    },
+    {
+        "pattern": _re.compile(r'Runtime\.getRuntime\(\)\.exec\(', _re.MULTILINE),
+        "issue": "OS command execution via Runtime.exec() — potential command injection",
+        "severity": "HIGH",
+        "owasp": "A03:2021 - Injection",
+        "cwe": "CWE-78",
+    },
+    {
+        "pattern": _re.compile(r'MessageDigest\.getInstance\("MD5"\)', _re.MULTILINE),
+        "issue": "Use of MD5 — weak cryptographic hash, do not use for security purposes",
+        "severity": "MEDIUM",
+        "owasp": "A02:2021 - Cryptographic Failures",
+        "cwe": "CWE-327",
+    },
+    {
+        "pattern": _re.compile(r'MessageDigest\.getInstance\("SHA-1"\)', _re.MULTILINE),
+        "issue": "Use of SHA-1 — deprecated cryptographic hash, prefer SHA-256 or higher",
+        "severity": "MEDIUM",
+        "owasp": "A02:2021 - Cryptographic Failures",
+        "cwe": "CWE-327",
+    },
+    {
+        "pattern": _re.compile(r'new\s+URL\s*\([^)]*request\.|new\s+URL\s*\([^)]*param', _re.MULTILINE),
+        "issue": "Potential SSRF — URL constructed from user-controlled input",
+        "severity": "HIGH",
+        "owasp": "A10:2021 - Server-Side Request Forgery",
+        "cwe": "CWE-918",
+    },
+    {
+        "pattern": _re.compile(r'System\.out\.println\s*\([^)]*[Pp]assword', _re.MULTILINE),
+        "issue": "Password or sensitive data may be logged to stdout",
+        "severity": "MEDIUM",
+        "owasp": "A09:2021 - Security Logging and Monitoring Failures",
+        "cwe": "CWE-532",
+    },
+]
+
+
+@traceable(
+    name="StaticAnalysis-Java",
+    run_type="tool",
+)
+async def run_java_linters(code: str) -> dict:
     """
     Entry point for Java static analysis.
 
-    Currently a STUB — planned to use PMD (a Java static analysis tool)
-    in a future milestone. For now, the Java Security Agent relies
-    entirely on the LLM and its own OWASP knowledge instead.
+    Runs lightweight regex heuristics to detect common Java security anti-patterns
+    (SQL injection, hardcoded secrets, weak cryptography, command injection, SSRF).
+
+    This provides the LLM Security Agent with concrete, structured findings without
+    requiring a Java JDK or PMD installation on the host machine.
+
+    Note: For production-grade Java analysis, integrate PMD or SpotBugs via subprocess
+    (planned for a future milestone when Java JDK availability can be assumed).
 
     Args:
         code: Raw Java source code string.
 
     Returns:
-        A dict with a placeholder PMD message.
+        A dict with key "heuristics" containing a list of detected issues,
+        and key "pmd" with a status note.
     """
+    findings = []
+    lines = code.splitlines()
+
+    for rule in _JAVA_SECURITY_PATTERNS:
+        for match in rule["pattern"].finditer(code):
+            # Compute line number from character offset
+            line_num = code[: match.start()].count("\n") + 1
+            snippet = lines[line_num - 1].strip() if line_num <= len(lines) else ""
+            findings.append({
+                "issue": rule["issue"],
+                "severity": rule["severity"],
+                "owasp": rule["owasp"],
+                "cwe": rule["cwe"],
+                "line": line_num,
+                "snippet": snippet[:120],  # Cap snippet length
+            })
+
     return {
-        "pmd": {"message": "Java static analysis is deferred in this milestone. Relying purely on the LLM agent."}
+        "heuristics": findings,
+        "pmd": {
+            "message": (
+                f"PMD subprocess integration is planned for a future milestone. "
+                f"Regex heuristics detected {len(findings)} potential issue(s)."
+            )
+        },
     }
+

@@ -1,28 +1,7 @@
 """
-app/llm.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: The single source of truth for which AI model to use.
-         All agents import their LLM from here — NEVER hard-code
-         a model name directly inside an agent file.
-
-         This makes switching between Gemini (cloud) and Ollama (local)
-         a one-line change in the .env file.
-
-LLM ROLES:
-  get_llm()       → Heavy model (Gemini Pro / Codestral)
-                    Used by: Security Agent, Remediation Agent
-                    Why: Security needs deep reasoning and code understanding
-
-  get_fast_llm()  → Lighter/faster model (Gemini Flash / Qwen2.5-Coder)
-                    Used by: Code Analysis Agent, PR Summary Agent
-                    Why: These tasks are simpler and benefit from speed
-
-  get_embeddings() → Embedding model (text-embedding-004 / nomic-embed-text)
-                    Used by: RAG indexer and ChromaDB vector search
-                    Why: Converts text to mathematical vectors for similarity search
-
-All functions are cached with @lru_cache so the model is only loaded once.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: llm.py
+Structure: Conditional instantiation logic for Gemini API or local Ollama models based on environment configuration.
+Methods used: get_llm, get_fast_llm, get_provider_info.
 """
 
 from __future__ import annotations
@@ -33,12 +12,10 @@ from loguru import logger
 from app.config import get_settings
 
 
-@lru_cache(maxsize=1)
 def get_llm():
     """
     Return the primary (heavy) LLM for deep reasoning tasks.
-    Cached so the model object is only created once per process.
-
+    
     Provider selection is driven by LLM_PROVIDER in .env:
       - "gemini" → ChatGoogleGenerativeAI (requires GEMINI_API_KEY)
       - "ollama"  → ChatOllama (requires Ollama running locally)
@@ -66,11 +43,9 @@ def get_llm():
     )
 
 
-@lru_cache(maxsize=1)
 def get_fast_llm():
     """
     Return the fast (lighter) LLM for speed-sensitive tasks.
-    Cached so the model object is only created once per process.
 
     Used by agents that need a quick turnaround and don't require
     the deepest possible reasoning (code quality review, PR summary).

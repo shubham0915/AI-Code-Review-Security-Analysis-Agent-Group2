@@ -1,18 +1,7 @@
 """
-app/config.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Single source of truth for ALL configuration values.
-         Reads from the .env file automatically using pydantic-settings.
-         Never hard-code API keys or settings anywhere else in the codebase.
-
-HOW TO USE:
-  from app.config import get_settings
-  settings = get_settings()
-  print(settings.redis_url)   # "redis://localhost:6379/0"
-
-All values have sensible defaults so the app starts even without a .env file.
-In production, override them via environment variables or a secrets manager.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: config.py
+Structure: Pydantic BaseSettings models and cached settings accessor methods.
+Methods used: get_settings, allowed_ext_list, max_file_size_bytes, using_gemini, using_ollama.
 """
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,6 +9,9 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
+    """
+    Represents the Settings entity.
+    """
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -84,18 +76,30 @@ class Settings(BaseSettings):
 
     @property
     def allowed_ext_list(self) -> list[str]:
+        """
+    Parses and returns a list of allowed source code file extension strings from configuration settings.
+    """
         return [e.strip() for e in self.allowed_extensions.split(",")]
 
     @property
     def max_file_size_bytes(self) -> int:
+        """
+    Calculates the maximum permissible uploaded source file size in bytes.
+    """
         return self.max_file_size_mb * 1024 * 1024
 
     @property
     def using_gemini(self) -> bool:
+        """
+    Determines whether Google Gemini is configured as the active LLM backend provider.
+    """
         return self.llm_provider.lower() == "gemini"
 
     @property
     def using_ollama(self) -> bool:
+        """
+    Determines whether local Ollama is configured as the active LLM backend provider.
+    """
         return self.llm_provider.lower() == "ollama"
 
 

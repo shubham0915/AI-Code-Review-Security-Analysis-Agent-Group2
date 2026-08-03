@@ -55,11 +55,13 @@ weasyprint==62.3
 jinja2==3.1.4
 reportlab==4.2.2
 
-# ── Monitoring & Logging ─────────────────────
+# ── Monitoring & Logging ─────────────────────────────
 prometheus-client==0.20.0
 structlog==24.2.0
 loguru==0.7.2
 logfire[fastapi,celery,redis,system-metrics,httpx]
+# LangSmith — LLM & agent observability (traces LangChain, LangGraph, and custom @traceable spans)
+langsmith>=0.1.77
 # Optional observability — install manually to enable LangChain tracing.
 # Import is guarded in app/celery_app.py so missing this never crashes CI.
 # openinference-instrumentation-langchain>=0.1.0

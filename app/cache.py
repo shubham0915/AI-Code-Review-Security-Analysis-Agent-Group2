@@ -1,19 +1,7 @@
 """
-app/cache.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Manages all caching for the application.
-         Stores session state and analysis results so they can be
-         retrieved quickly without re-running the expensive AI pipeline.
-
-HOW IT WORKS:
-  - Primary store: Redis (a fast in-memory database running in Docker)
-  - Automatic fallback: If Redis is down, switches to a simple Python
-    dict-based store so the app keeps working in development.
-
-SECTIONS:
-  1. In-Memory Fallback  — Thread-safe dict store with TTL expiry
-  2. Redis Client        — Async Redis wrapper with auto-fallback logic
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: cache.py
+Structure: Dual-mode storage engine featuring an in-memory dictionary fallback store and an asynchronous Redis client wrapper.
+Methods used: get_redis_client, get, set, delete, close_redis.
 """
 
 from __future__ import annotations
@@ -83,6 +71,9 @@ class MemoryClient:
     """
 
     async def get(self, key: str) -> Optional[str]:
+        """
+    Retrieves a cached string value by key from the in-memory or Redis storage layer.
+    """
         return mem_get(key)
 
     async def setex(self, key: str, ttl: int, value: str) -> bool:
@@ -91,6 +82,9 @@ class MemoryClient:
         return True
 
     async def delete(self, key: str) -> None:
+        """
+    Removes a cached item by key from the storage layer to invalidate outdated entries.
+    """
         mem_delete(key)
 
     async def ping(self) -> bool:

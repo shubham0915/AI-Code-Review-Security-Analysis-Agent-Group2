@@ -1,7 +1,7 @@
 """
-app/api/routes/status.py — Task status polling endpoint.
-
-GET /api/v1/status/{session_id}
+About this file: status.py
+Structure: FastAPI route handler retrieving ongoing execution stage and progress estimates from Redis.
+Methods used: get_status.
 """
 
 from __future__ import annotations
@@ -24,6 +24,9 @@ router = APIRouter(prefix="/api/v1/status", tags=["Task Status"])
     description="Returns current status and progress for a submitted code analysis task.",
 )
 async def get_status(session_id: str) -> TaskStatusResponse:
+    """
+    Queries Redis to check the current stage and progress percentage of a submitted analysis session.
+    """
     redis = await get_redis_client()
     raw = await redis.get(f"session:{session_id}")
 

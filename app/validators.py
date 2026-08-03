@@ -1,20 +1,7 @@
 """
-app/validators.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Acts as the "Gatekeeper" — the very first check before any
-         AI agent ever sees the user's code.
-
-         Step 1: DETECT what language the code is (Python or Java?)
-         Step 2: VALIDATE the syntax (is it even valid code?)
-
-         If either step fails, the pipeline halts immediately.
-         Broken or unsupported code is NEVER sent to the LLM agents.
-         (This rule is enforced by .agents/AGENTS.md)
-
-SECTIONS:
-  1. Language Detection  — Uses Google Magika (ML-based) to identify the language
-  2. Syntax Validation   — Uses ast.parse (Python) and javalang (Java)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: validators.py
+Structure: Pure-Python AST and heuristics checkers preventing broken source code from entering the AI review pipeline.
+Methods used: detect_language, validate_code, check_python_syntax, check_java_syntax.
 """
 
 from __future__ import annotations

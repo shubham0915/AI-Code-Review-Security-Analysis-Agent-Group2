@@ -1,23 +1,7 @@
 """
-app/tasks.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Contains the Celery task that runs the full AI analysis pipeline.
-         This is the entry point for BACKGROUND processing.
-
-WHEN IS THIS CALLED?
-  - When a user submits code via the API, the submit route calls:
-      run_full_analysis.delay(session_id)
-  - '.delay()' sends the task to the Redis queue without blocking
-  - A Celery worker process picks it up and executes run_full_analysis()
-
-WHAT DOES IT DO?
-  1. Load the code from the Redis session store
-  2. Set the session status to "running"
-  3. Build the LangGraph initial state
-  4. Invoke the full agent pipeline (linters → code analysis → security)
-  5. Save the results to Redis
-  6. Set the session status to "completed" (or "failed" on error)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: tasks.py
+Structure: Celery task handler mapping queued submissions through validation, linter execution, and graph orchestration.
+Methods used: analyze_code_task, update_task_status.
 """
 from __future__ import annotations
 
@@ -32,6 +16,7 @@ from loguru import logger
 from app.celery_app import celery_app
 from app.config import get_settings
 from app.agents.graph import analysis_graph
+from app.tracing import traceable, log_trace_url
 
 print("[CELERY WORKER] analysis_graph imported and ready.", flush=True)
 
@@ -73,13 +58,31 @@ def run_full_analysis(self, session_id: str) -> dict:
             "linter_output": {},
             "code_analysis_result": None,
             "security_analysis_result": None,
+            "remediation_result": None,
+            "pr_summary_result": None,
         }
         print("[CELERY] Invoking LangGraph pipeline...", flush=True)
+
+        # ── LangSmith: run the full pipeline inside a named traceable span ──────
+        @traceable(
+            name="FullAnalysisPipeline",
+            run_type="chain",
+            metadata={
+                "session_id": session_id,
+                "language": language,
+                "code_length": len(code),
+                "filename": session.get("filename", "unknown"),
+            },
+            project_name="codeANALYSIS",
+        )
+        async def _invoke_pipeline(state: dict) -> dict:
+            """Inner async wrapper so the whole graph is one LangSmith span."""
+            return await analysis_graph.ainvoke(state)
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
-            final_state = loop.run_until_complete(analysis_graph.ainvoke(initial_state))
+            final_state = loop.run_until_complete(_invoke_pipeline(initial_state))
         finally:
             loop.close()
             asyncio.set_event_loop(None)
@@ -88,8 +91,11 @@ def run_full_analysis(self, session_id: str) -> dict:
 
         code_res = final_state.get("code_analysis_result")
         sec_res = final_state.get("security_analysis_result")
+        rem_res = final_state.get("remediation_result")
+        pr_res = final_state.get("pr_summary_result")
 
         def pydantic_to_dict(model):
+            """Safely serialize a Pydantic model to a dict for Redis JSON storage."""
             return model.model_dump() if model else None
 
         pipeline_result = {
@@ -98,8 +104,8 @@ def run_full_analysis(self, session_id: str) -> dict:
             "filename": session.get("filename"),
             "code_analysis": pydantic_to_dict(code_res),
             "security_analysis": pydantic_to_dict(sec_res),
-            "remediation": None,
-            "pr_summary": None,
+            "remediation": pydantic_to_dict(rem_res),
+            "pr_summary": pydantic_to_dict(pr_res),
             "error": None,
         }
 
@@ -123,6 +129,7 @@ def run_full_analysis(self, session_id: str) -> dict:
         r.setex(f"session:{session_id}", settings.redis_session_ttl, json.dumps(session))
 
         logger.info(f"Analysis completed: {session_id}")
+        log_trace_url(session_id)  # Logs LangSmith trace URL to console
         return {"status": "completed", "session_id": session_id}
 
     except Exception as exc:

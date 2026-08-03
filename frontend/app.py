@@ -1,13 +1,7 @@
 """
-frontend/app.py — Streamlit Developer Portal
-
-AI Code Review & Security Analysis Agent — Milestone 1
-Features:
-  - Code paste with syntax-highlighted editor
-  - File upload (.py / .java)
-  - Live validation feedback
-  - Session tracking + status polling
-  - Works with OR without the FastAPI backend (graceful fallback)
+About this file: app.py
+Structure: Multi-tab application layout featuring code editor inputs, live progress tracking, scorecard modals, and assistant chat.
+Methods used: check_api, api_validate, api_submit_paste, api_submit_file, api_status, api_rag_query, api_chat, show_report_dialog, display_analysis_report.
 """
 from __future__ import annotations
 
@@ -16,6 +10,8 @@ from datetime import datetime
 import streamlit as st
 
 import logfire
+from dotenv import load_dotenv
+load_dotenv(override=True)
 logfire.configure()
 logfire.instrument_httpx()
 # Page config — MUST be the very first Streamlit call
@@ -185,6 +181,9 @@ if "api_mode" not in st.session_state:
 
 # API + standalone helpers
 def check_api() -> bool:
+    """
+    Checks if the backend FastAPI service is running and reachable over HTTP.
+    """
     try:
         import httpx
         r = httpx.get(f"{API_BASE}/health", timeout=2)
@@ -194,6 +193,9 @@ def check_api() -> bool:
 
 
 def api_validate(code: str, language: str) -> dict:
+    """
+    Sends code snippets to the backend API endpoint for quick syntax validation.
+    """
     try:
         import httpx
         r = httpx.post(f"{API_BASE}/api/v1/submit/validate",
@@ -204,6 +206,9 @@ def api_validate(code: str, language: str) -> dict:
 
 
 def api_submit_paste(code: str, language: str, filename: str = "") -> dict:
+    """
+    Submits direct code text paste to the backend queue for asynchronous multi-agent review.
+    """
     try:
         import httpx
         payload = {"code": code, "language": language}
@@ -216,6 +221,9 @@ def api_submit_paste(code: str, language: str, filename: str = "") -> dict:
 
 
 def api_submit_file(file_bytes: bytes, filename: str, language: str) -> dict:
+    """
+    Uploads a source file (.py or .java) to the backend pipeline for multi-agent code analysis.
+    """
     try:
         import httpx
         r = httpx.post(
@@ -230,6 +238,9 @@ def api_submit_file(file_bytes: bytes, filename: str, language: str) -> dict:
 
 
 def api_status(session_id: str) -> dict:
+    """
+    Polls the backend API status endpoint to monitor session processing stages and errors.
+    """
     try:
         import httpx
         r = httpx.get(f"{API_BASE}/api/v1/status/{session_id}", timeout=5)
@@ -242,6 +253,9 @@ def api_status(session_id: str) -> dict:
         return {"error": "Session not found"}
 
 def api_rag_query(question: str) -> dict:
+    """
+    Sends natural language questions to the RAG knowledge endpoint to query security documentation.
+    """
     try:
         import httpx
         r = httpx.post(f"{API_BASE}/api/v1/rag/query", json={"question": question, "top_k": 3}, timeout=120)
@@ -249,9 +263,27 @@ def api_rag_query(question: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+def api_chat(session_id: str, message: str) -> dict:
+    """
+    Communicates with the stateful conversational assistant endpoint to discuss specific review sessions.
+    """
+    try:
+        import httpx
+        r = httpx.post(
+            f"{API_BASE}/api/v1/chat", 
+            json={"session_id": session_id, "message": message, "thread_id": session_id}, 
+            timeout=120
+        )
+        return r.json()
+    except Exception as e:
+        return {"error": str(e)}
+
 
 # Local (no-API) validators & submit — runs fully in-browser
 def _detect_language(code: str, filename: str = "") -> str:
+    """
+    Uses file extensions or content keyword heuristics to detect programming language in local fallback mode.
+    """
     import os
     
     expected_lang = None
@@ -324,6 +356,9 @@ def _detect_language(code: str, filename: str = "") -> str:
 
 
 def _local_validate(code: str, language: str) -> dict:
+    """
+    Runs entirely in-browser syntax validation using Python AST or Java parser heuristics.
+    """
     if language.startswith("mismatch|"):
         _, expected, got = language.split("|")
         return {
@@ -383,6 +418,9 @@ def _local_validate(code: str, language: str) -> dict:
 
 
 def _local_submit(code: str, language: str, filename: str = "") -> dict:
+    """
+    Creates a localized simulation session entry when operating without a running backend server.
+    """
     if language == "auto":
         language = _detect_language(code, filename)
 
@@ -484,21 +522,71 @@ st.markdown("---")
 
 @st.experimental_dialog("Analysis Report", width="large")
 def show_report_dialog(res: dict):
+    """
+    Renders a detailed modal pop-up dialog box displaying completed review scorecards and vulnerabilities.
+    """
     display_analysis_report(res)
 
 def display_analysis_report(res: dict):
+    """
+    Renders the multi-tab findings dashboard, presenting code analysis, security flaws, and corrected code.
+    """
     if not res:
         st.warning("No result available.")
         return
     
     code_res = res.get("code_analysis") or {}
     sec_res = res.get("security_analysis") or {}
-    
-    tab_dash, tab_code, tab_sec, tab_raw = st.tabs(["📊 Dashboard", "📝 Code Quality", "🛡️ Security", "⚙️ Raw Data"])
-    
+    rem_res = res.get("remediation") or {}
+    pr_res = res.get("pr_summary") or {}
+
+    tab_dash, tab_pr, tab_code, tab_sec, tab_rem, tab_raw = st.tabs([
+        "📊 Dashboard",
+        "📋 PR Review",
+        "📝 Code Quality",
+        "🛡️ Security",
+        "🔧 Remediation",
+        "⚙️ Raw Data",
+    ])
+
+    # ── Tab: Dashboard ────────────────────────────────────────────────────────
     with tab_dash:
-        st.markdown("### 📊 Overview")
-        col1, col2, col3 = st.columns(3)
+        # PR Summary card (if available)
+        if pr_res:
+            risk = str(pr_res.get("overall_risk", "UNKNOWN")).upper()
+            approved = pr_res.get("approved", False)
+            risk_colors = {
+                "CRITICAL": ("#ef4444", "🚨"),
+                "HIGH":     ("#f97316", "🔴"),
+                "MEDIUM":   ("#f59e0b", "🟡"),
+                "LOW":      ("#22c55e", "🟢"),
+                "CLEAN":    ("#10b981", "✅"),
+            }
+            r_color, r_icon = risk_colors.get(risk, ("#94a3b8", "❓"))
+            approved_badge = (
+                '<span style="background:#10b981;color:#fff;padding:3px 10px;border-radius:12px;font-size:12px">✅ APPROVED</span>'
+                if approved else
+                '<span style="background:#ef4444;color:#fff;padding:3px 10px;border-radius:12px;font-size:12px">❌ BLOCKED</span>'
+            )
+            st.markdown(f"""
+            <div style="background:rgba(255,255,255,0.05);border:1px solid {r_color};
+                        border-radius:12px;padding:16px 20px;margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  <span style="font-size:1.6rem;font-weight:800;color:{r_color}">
+                    {r_icon} Overall Risk: {risk}
+                  </span>
+                </div>
+                <div>{approved_badge}</div>
+              </div>
+              <div style="color:#94a3b8;font-size:13px;margin-top:6px">
+                Composite Risk Score: <b>{pr_res.get('composite_risk_score', 'N/A')}</b>/100 &nbsp;|&nbsp;
+                Total Findings: <b>{pr_res.get('total_findings', 'N/A')}</b>
+              </div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("### 📊 Scores")
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Quality Score", code_res.get("quality_score", "N/A"))
         with col2:
@@ -506,13 +594,48 @@ def display_analysis_report(res: dict):
             st.metric("Quality Grade", grade)
         with col3:
             st.metric("Security Score", sec_res.get("security_score", "N/A"))
-            
+        with col4:
+            comp_score = pr_res.get("composite_risk_score", "N/A") if pr_res else "N/A"
+            st.metric("Composite Risk", comp_score)
+
         st.markdown("#### Summaries")
         if code_res.get("summary"):
             st.info(f"**Code Quality**: {code_res['summary']}")
         if sec_res.get("summary"):
             st.warning(f"**Security**: {sec_res['summary']}")
-            
+        if rem_res.get("summary") and not rem_res["summary"].startswith("[PARSE ERROR]"):
+            st.success(f"**Remediations**: {rem_res['summary']}")
+
+        # Remediation priority list from PR Summary
+        if pr_res and pr_res.get("remediation_priority_list"):
+            st.markdown("#### 🎯 Fix Priority")
+            for i, item in enumerate(pr_res["remediation_priority_list"], 1):
+                st.markdown(f"{i}. {item}")
+
+    # ── Tab: PR Review ────────────────────────────────────────────────────────
+    with tab_pr:
+        st.markdown("### 📋 Pull Request Review")
+        if not pr_res:
+            st.info("PR Summary is not available yet. Complete an analysis run to see the review.")
+        else:
+            md_review = pr_res.get("markdown_review", "")
+            if md_review:
+                st.markdown(md_review)
+            else:
+                risk = str(pr_res.get("overall_risk", "UNKNOWN")).upper()
+                approved = pr_res.get("approved", False)
+                st.markdown(f"""**Overall Risk:** {risk}  
+**Security Score:** {pr_res.get('security_score', 'N/A')}/100  
+**Quality Score:** {pr_res.get('quality_score', 'N/A')}/100  
+**Approved:** {'Yes ✅' if approved else 'No ❌'}""")
+
+            if pr_res.get("remediation_priority_list"):
+                st.markdown("---")
+                st.markdown("### 🎯 Remediation Priority")
+                for i, item in enumerate(pr_res["remediation_priority_list"], 1):
+                    st.markdown(f"{i}. {item}")
+
+    # ── Tab: Code Quality ─────────────────────────────────────────────────────
     with tab_code:
         st.markdown("### 📝 Code Quality Findings")
         comp = code_res.get("complexity_score", {})
@@ -522,7 +645,7 @@ def display_analysis_report(res: dict):
             ccol2.metric("Cognitive", comp.get("cognitive", "N/A"))
             ccol3.metric("Lines of Code", comp.get("lines_of_code", "N/A"))
             ccol4.metric("Duplication %", f"{comp.get('duplication_pct', 'N/A')}%")
-        
+
         findings = code_res.get("findings", [])
         if not findings:
             st.success("No code smells or design issues found!")
@@ -539,7 +662,8 @@ def display_analysis_report(res: dict):
                         st.write(f"**Line:** {ls}")
                     if f.get('suggestion'):
                         st.write(f"**Suggestion:** {f['suggestion']}")
-                        
+
+    # ── Tab: Security ─────────────────────────────────────────────────────────
     with tab_sec:
         st.markdown("### 🛡️ Security Vulnerabilities")
         sec_findings = sec_res.get("vulnerabilities", [])
@@ -558,10 +682,42 @@ def display_analysis_report(res: dict):
                     if v.get('evidence'):
                         st.write(f"**Evidence:** {v['evidence']}")
                     if v.get('remediation'):
-                        st.write(f"**Remediation:** {v['remediation']}")
-                        
+                        st.write(f"**Quick Fix:** {v['remediation']}")
+
+    # ── Tab: Remediation ──────────────────────────────────────────────────────
+    with tab_rem:
+        st.markdown("### 🔧 Remediation Recommendations")
+        if not rem_res:
+            st.info("Remediation data is not yet available. It is generated in Stage 4 of the pipeline.")
+        elif rem_res.get("summary", "").startswith("[PARSE ERROR]"):
+            st.error(f"Remediation agent encountered an error: {rem_res.get('summary', '')}")
+        else:
+            if rem_res.get("summary"):
+                st.success(f"**Summary:** {rem_res['summary']}")
+
+            remediations = rem_res.get("remediations", [])
+            if not remediations:
+                st.info("No specific code remediations generated.")
+            else:
+                for r in remediations:
+                    effort = r.get("effort", "medium")
+                    effort_color = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(effort, "⚪")
+                    finding_id = r.get("finding_id", "N/A")
+                    rec = r.get("recommendation", "See details below")
+                    with st.expander(f"{effort_color} [{finding_id}] {rec} (Effort: {effort.title()})"):
+                        if r.get("explanation"):
+                            st.markdown(f"**Why this works:** {r['explanation']}")
+                        if r.get("corrected_code"):
+                            st.markdown("**Corrected Code:**")
+                            lang = res.get("language", "python")
+                            st.code(r["corrected_code"], language=lang)
+                        if r.get("references"):
+                            st.markdown("**References:** " + " · ".join(r["references"]))
+
+    # ── Tab: Raw Data ─────────────────────────────────────────────────────────
     with tab_raw:
         st.json(res)
+
 
 # Tabs
 tab_paste, tab_upload, tab_history, tab_chat, tab_about = st.tabs([
@@ -1008,53 +1164,56 @@ with tab_history:
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_chat:
     st.markdown("### 💬 Conversational Code Assistant")
-    st.markdown("Ask security questions directly to the RAG Knowledge Base. The AI will answer grounded in OWASP guidelines.")
+    st.markdown("Select a completed session to discuss your code review findings interactively.")
     
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    sessions = st.session_state.get("sessions", [])
+    completed_sessions = [s for s in sessions if s.get("status") == "completed"]
+    
+    if not completed_sessions:
+        st.info("No completed analysis sessions found. Please submit and wait for code to finish analyzing.")
+    else:
+        chat_session = st.selectbox(
+            "Select Session to Discuss", 
+            options=completed_sessions,
+            format_func=lambda s: f"[{s.get('session_id')[:8]}] {s.get('filename')} ({s.get('language')})"
+        )
         
-    # Display chat messages
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            if "sources" in msg and msg["sources"]:
-                with st.expander("📚 View Sources"):
-                    for i, src in enumerate(msg["sources"], 1):
-                        st.markdown(f"**Source {i}** (Score: {src.get('score', 'N/A')}):")
-                        st.caption(f"{src.get('text', '')[:300]}...")
-                        st.divider()
-
-    # Chat input
-    if user_q := st.chat_input("E.g. What is the best way to prevent SQL Injection?"):
-        # Add user message to UI immediately
-        st.session_state.chat_history.append({"role": "user", "content": user_q})
-        with st.chat_message("user"):
-            st.markdown(user_q)
+        session_id = chat_session["session_id"]
+        
+        # Maintain chat history per session
+        if "chat_histories" not in st.session_state:
+            st.session_state.chat_histories = {}
+        if session_id not in st.session_state.chat_histories:
+            st.session_state.chat_histories[session_id] = []
             
-        # Get AI response
-        with st.chat_message("assistant"):
-            with st.spinner("Searching Knowledge Base (This may take a minute on cold start)..."):
-                if mode == "local":
-                    st.error("❌ RAG Assistant requires the FastAPI backend to be running (`uvicorn app.main:app --reload`).")
-                else:
-                    res = api_rag_query(user_q)
-                    if "error" in res:
-                        st.error(f"❌ Error communicating with RAG endpoint: {res['error']}")
+        history = st.session_state.chat_histories[session_id]
+        
+        # Display chat messages
+        for msg in history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                
+        # Chat input
+        if user_q := st.chat_input(f"Ask about {chat_session.get('filename', 'your code')}..."):
+            history.append({"role": "user", "content": user_q})
+            with st.chat_message("user"):
+                st.markdown(user_q)
+                
+            with st.chat_message("assistant"):
+                with st.spinner("Analyzing context..."):
+                    if st.session_state.get("api_mode", "api") == "local":
+                        st.error("❌ Chat requires the FastAPI backend to be running.")
                     else:
-                        answer = res.get("answer", "No answer generated.")
-                        sources = res.get("sources", [])
-                        st.markdown(answer)
-                        if sources:
-                            with st.expander("📚 View Sources"):
-                                for i, src in enumerate(sources, 1):
-                                    st.markdown(f"**Source {i}**:")
-                                    st.caption(f"{src.get('text', '')[:300]}...")
-                                    st.divider()
-                        st.session_state.chat_history.append({
-                            "role": "assistant",
-                            "content": answer,
-                            "sources": sources
-                        })
+                        res = api_chat(session_id, user_q)
+                        if "error" in res:
+                            st.error(f"❌ Error communicating with Assistant: {res['error']}")
+                        else:
+                            answer = res.get("response", "No answer generated.")
+                            st.markdown(answer)
+                            history.append({
+                                "role": "assistant",
+                                "content": answer,
+                            })
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — About

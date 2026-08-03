@@ -1,16 +1,7 @@
 """
-app/models.py
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PURPOSE: Defines all Pydantic data models used across the project.
-         Think of this file as the "blueprint" for every piece of data
-         that flows through the system — from the user's first request
-         to the final analysis report.
-
-SECTIONS:
-  1. Session Models   — What the user submits and what we immediately return
-  2. Agent Outputs    — What each AI agent produces (code smells, vulns, etc.)
-  3. Report Models    — Models for exporting/downloading the final report
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+About this file: models.py
+Structure: Class definitions grouped by domain: submission requests, review results, report export schemas, and chat models.
+Methods used: normalize_severity, coerce_cwe_id, normalize_owasp, set_defaults.
 """
 
 from __future__ import annotations
@@ -174,6 +165,9 @@ class CodeSmell(BaseModel):
     @classmethod
     def normalize_severity(cls, v: Any):
         # LLMs sometimes return "HIGH" or "High" — normalize to lowercase
+        """
+    Normalizes various severity formats (e.g. text or numbers) into standardized severity enum values.
+    """
         if isinstance(v, str):
             return v.lower()
         return v
@@ -181,6 +175,9 @@ class CodeSmell(BaseModel):
     @model_validator(mode="after")
     def set_defaults(self):
         # Auto-fill missing id and category so the frontend never gets null values
+        """
+    Assigns fallback unique IDs or standard creation timestamps to Pydantic models when missing upon instantiation.
+    """
         if not self.id:
             self.id = str(uuid.uuid4())[:8]
         if not self.category:
@@ -237,6 +234,9 @@ class SecurityVulnerability(BaseModel):
     @field_validator("severity", mode="before")
     @classmethod
     def normalize_severity(cls, v: Any):
+        """
+    Normalizes various severity formats (e.g. text or numbers) into standardized severity enum values.
+    """
         if isinstance(v, str):
             return v.lower()
         return v
@@ -245,6 +245,9 @@ class SecurityVulnerability(BaseModel):
     @classmethod
     def coerce_cwe_id(cls, v: Any):
         # LLMs sometimes return CWE as an integer (89) instead of a string ("89")
+        """
+    Extracts standard numeric CWE identifier strings from messy or compound model LLM responses.
+    """
         if v is not None:
             return str(v)
         return v
@@ -289,6 +292,9 @@ class SecurityVulnerability(BaseModel):
 
     @model_validator(mode="after")
     def set_defaults(self):
+        """
+    Assigns fallback unique IDs or standard creation timestamps to Pydantic models when missing upon instantiation.
+    """
         if not self.id:
             self.id = str(uuid.uuid4())[:8]
         return self
@@ -406,3 +412,17 @@ class ReportDocument(BaseModel):
     metadata: ReportMetadata
     analysis: FullAnalysisResult
     export_format: ExportFormat = ExportFormat.json
+
+
+# ─── SECTION 4: CHAT ASSISTANT MODELS ──────────────────────────────────────────
+
+class ChatRequest(BaseModel):
+    """Request body for POST /api/v1/chat"""
+    session_id: str
+    message: str
+    thread_id: str = "default"  # To isolate memory threads if needed
+
+
+class ChatResponse(BaseModel):
+    """Response body for POST /api/v1/chat"""
+    response: str

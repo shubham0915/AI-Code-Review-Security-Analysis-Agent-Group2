@@ -43,7 +43,7 @@ public class Calculator {
 }
 """
 
-    @patch("app.cache.redis_cache.get_redis_client")
+    @patch("app.api.routes.submit.get_redis_client")
     def test_submit_valid_python(self, mock_get_redis):
         mock_r = AsyncMock()
         mock_r.get = AsyncMock(return_value=None)
@@ -59,7 +59,7 @@ public class Calculator {
         assert data["language"] == "python"
         assert data["lines_of_code"] > 0
 
-    @patch("app.cache.redis_cache.get_redis_client")
+    @patch("app.api.routes.submit.get_redis_client")
     def test_submit_valid_java(self, mock_get_redis):
         mock_r = AsyncMock()
         mock_r.get = AsyncMock(return_value=None)
@@ -72,7 +72,7 @@ public class Calculator {
         data = resp.json()
         assert data["language"] == "java"
 
-    @patch("app.cache.redis_cache.get_redis_client")
+    @patch("app.api.routes.submit.get_redis_client")
     def test_submit_auto_detects_python(self, mock_get_redis):
         mock_r = AsyncMock()
         mock_r.get = AsyncMock(return_value=None)
@@ -132,7 +132,7 @@ class TestValidateEndpoint:
 # File upload
 # ─────────────────────────────────────────────────────────────────────────────
 class TestFileUpload:
-    @patch("app.cache.redis_cache.get_redis_client")
+    @patch("app.api.routes.submit.get_redis_client")
     def test_upload_python_file(self, mock_get_redis):
         mock_r = AsyncMock()
         mock_r.get = AsyncMock(return_value=None)
