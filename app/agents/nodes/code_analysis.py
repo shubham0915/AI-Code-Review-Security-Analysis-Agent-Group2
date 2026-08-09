@@ -1,7 +1,8 @@
 """
 About this file: code_analysis.py
-Structure: Prompt formulation and parsing logic evaluating source code alongside Pylint convention outputs.
-Methods used: analyze_code, _extract_json.
+Structure: Prompt formulation and parsing logic evaluating source code alongside Pylint/Radon static
+           analysis outputs that are now computed directly inside this agent.
+Methods used: run_code_analysis, _extract_json.
 """
 import json
 import re
@@ -12,6 +13,7 @@ from app.llm import get_llm, get_fast_llm
 from app.models import CodeAnalysisResult
 from app.agents.state import AgentState
 from app.tracing import traceable
+from app.linters import run_python_linters, run_java_linters
 
 PROMPT = """You are an expert Senior Software Engineer performing a code review.
 Your task is to analyze the provided source code ONLY for code smells, design anti-patterns, complexity issues, convention violations (like missing docstrings), and poor coding practices.
@@ -81,14 +83,29 @@ async def run_code_analysis(state: AgentState) -> dict:
     """
     logger.info(f"Running Code Analysis Agent for session {state.get('session_id')}")
     print(f"[CODE_ANALYSIS] Building chain...", flush=True)
+
+    # ── Stage 1 (embedded): Run quality-focused linters before calling the LLM ──
+    language = state.get("language", "python").lower()
+    code = state.get("code", "")
+    linter_out = state.get("linter_output", {}) or {}
+    try:
+        if language == "python":
+            quality_results = await run_python_linters(code)
+            # Merge into linter_output (preserve security linter keys if set)
+            linter_out = {**linter_out, **quality_results}
+        # Java quality linting: Semgrep handles Java in security_vuln; skip here
+        logger.info(f"[CODE_ANALYSIS] Quality linters complete — language={language}")
+    except Exception as e:
+        logger.warning(f"[CODE_ANALYSIS] Quality linter error (non-fatal): {e}")
+
     llm = get_llm()
     prompt = ChatPromptTemplate.from_template(PROMPT)
     chain = prompt | llm
 
     invoke_kwargs = {
-        "linter_output": json.dumps(state.get("linter_output", {})),
-        "code": state.get("code", ""),
-        "language": state.get("language", "python")
+        "linter_output": json.dumps(linter_out),
+        "code": code,
+        "language": language,
     }
 
     raw_text = ""
@@ -109,8 +126,22 @@ async def run_code_analysis(state: AgentState) -> dict:
                 raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
                 data = _extract_json(raw_text)
                 result = CodeAnalysisResult(**data)
+                # Inject Radon complexity metrics if available
+                if "radon" in linter_out and isinstance(linter_out["radon"], dict):
+                    radon = linter_out["radon"]
+                    max_cc = max(
+                        (b.get("complexity", 0)
+                         for blocks in radon.get("cc", {}).values() if isinstance(blocks, list)
+                         for b in blocks if isinstance(b, dict)),
+                        default=0,
+                    )
+                    result.complexity_score.cyclomatic = max_cc
+                    result.complexity_score.lines_of_code = sum(
+                        s.get("loc", 0)
+                        for s in radon.get("raw", {}).values() if isinstance(s, dict)
+                    )
                 logger.info(f"[CODE_ANALYSIS] OK (attempt {attempt + 1}). quality_score={result.quality_score}")
-                return {"code_analysis_result": result}
+                return {"code_analysis_result": result, "linter_output": linter_out}
 
         except (ValueError, json.JSONDecodeError, Exception) as e:
             last_error = e

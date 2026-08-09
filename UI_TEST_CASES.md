@@ -13,6 +13,11 @@ Use these curated test snippets in the **Streamlit Frontend (`npm run dev` or `s
 6. [Test Case 6: Gatekeeper Syntax Error (Blocks AI Pipeline)](#6-gatekeeper-syntax-error-blocks-ai-pipeline)
 7. [Test Case 7: Intent Guardrail Rejection (Prompt Injection / Non-Code)](#7-intent-guardrail-rejection-prompt-injection--non-code)
 8. [Test Case 8: Conversational Chat & RAG Assistant Queries](#8-conversational-chat--rag-assistant-queries)
+9. [Test Case 9: Server-Side Request Forgery (SSRF) & Unsafe Deserialization (Python Edge Case)](#9-server-side-request-forgery-ssrf--unsafe-deserialization-python-edge-case)
+10. [Test Case 10: XML External Entity (XXE) Injection & Entity Expansion (Python Edge Case)](#10-xml-external-entity-xxe-injection--entity-expansion-python-edge-case)
+11. [Test Case 11: TOCTOU Race Condition & Predictable Temp File Usage (Python Edge Case)](#11-toctou-race-condition--predictable-temp-file-usage-python-edge-case)
+12. [Test Case 12: Silent Java Object Deserialization & Broken ECB Cipher (Java Edge Case)](#12-silent-java-object-deserialization--broken-ecb-cipher-java-edge-case)
+13. [Test Case 13: Unshielded XML Parser XXE & Dynamic Shell Command Chaining (Java Edge Case)](#13-unshielded-xml-parser-xxe--dynamic-shell-command-chaining-java-edge-case)
 
 ---
 
@@ -207,3 +212,164 @@ Test vector embeddings retrieval and OWASP security guidelines without needing t
 1. > *"What are the official OWASP Top 10 recommendations for preventing Cross-Site Scripting (XSS) in Python web frameworks?"*
 2. > *"Why is using electronic codebook (ECB) mode in AES cryptographic algorithms considered dangerous, and what mode should developers use instead?"*
 3. > *"Explain how to prevent Server-Side Request Forgery (SSRF) when downloading remote files from user-supplied URLs."*
+
+---
+
+## 9. Server-Side Request Forgery (SSRF) & Unsafe Deserialization (Python Edge Case)
+**🎯 What to Test:** Paste into **Code Review Tab** with language set to `Python`.  
+**🔬 What to Expect:** Demonstrates detection of non-obvious data integrity flaws. Flags **Server-Side Request Forgery (SSRF — CWE-918)** on unvalidated webhook requests, alongside **Insecure Deserialization (CWE-502)** via Python `pickle.loads` and legacy `yaml.load`, which permit arbitrary code execution during object reconstitution.
+
+```python
+import requests
+import pickle
+import yaml
+
+def sync_remote_workflow(webhook_url: str, config_payload: bytes, metadata_str: str):
+    # EDGE CASE / MEDIUM-TO-DETECT: Server-Side Request Forgery (SSRF - CWE-918)
+    # Untrusted webhook URL fetched without IP restriction, private CIDR filtering, or domain whitelisting
+    response = requests.get(webhook_url, timeout=5)
+    
+    # EDGE CASE / CRITICAL: Insecure Object Deserialization via Pickle (CWE-502)
+    # Allows Remote Code Execution (RCE) via custom __reduce__ methods during byte stream reconstruction
+    state = pickle.loads(config_payload)
+    
+    # EDGE CASE / HIGH: Insecure YAML Parser Loading (CWE-502)
+    # Using default yaml.load instead of safe_load enables arbitrary Python class constructor execution
+    metadata = yaml.load(metadata_str, Loader=yaml.Loader)
+    
+    return {"status": response.status_code, "state": state, "metadata": metadata}
+```
+
+---
+
+## 10. XML External Entity (XXE) Injection & Entity Expansion (Python Edge Case)
+**🎯 What to Test:** Paste into **Code Review Tab** with language set to `Python`.  
+**🔬 What to Expect:** Evaluates XML parsing safety. Flags **XML External Entity Injection (CWE-611)** and potential **Billion Laughs Denial of Service (CWE-776 / XML Bomb)** caused by parsing external data using unshielded XML parsers with entity resolution active.
+
+```python
+import xml.etree.ElementTree as ET
+from lxml import etree
+
+def parse_incoming_invoice(xml_payload: str, xsd_schema_data: bytes):
+    # EDGE CASE / HARD TO DETECT: XML External Entity (XXE Injection - CWE-611)
+    # Standard ElementTree used on untrusted external XML without disabling entity declarations
+    # Allows Local File Inclusion (e.g. <!ENTITY xxe SYSTEM "file:///etc/passwd">)
+    tree = ET.fromstring(xml_payload)
+    customer = tree.find("customer_id").text
+    
+    # EDGE CASE / CRITICAL: lxml parser explicitly configured with entity resolution & net access
+    # Vulnerable to Billion Laughs DoS (Entity Expansion memory exhaustion) and internal port scanning
+    unsafe_parser = etree.XMLParser(resolve_entities=True, no_network=False)
+    document = etree.fromstring(xsd_schema_data, parser=unsafe_parser)
+    
+    return customer, document.tag
+```
+
+---
+
+## 11. TOCTOU Race Condition & Predictable Temp File Usage (Python Edge Case)
+**🎯 What to Test:** Paste into **Code Review Tab** with language set to `Python`.  
+**🔬 What to Expect:** Reveals subtle filesystem logic bugs. Flags **Time-Of-Check to Time-Of-Use (TOCTOU Race Condition — CWE-367)** and **Insecure Temporary File Creation (CWE-377)** where predictable file naming in shared `/tmp/` directories allows unauthorized symlink replacement and privilege escalation.
+
+```python
+import os
+import time
+
+def process_and_cache_token(user_session_id: str, access_token: str) -> bool:
+    # EDGE CASE / SUBTLE BUG: Predictable temporary storage location (CWE-377 / Bandit B108)
+    # Shared /tmp/ filesystem enables unauthorized local viewing or symbolic link replacement attacks
+    cache_path = f"/tmp/token_{user_session_id}.session"
+    
+    # EDGE CASE / HARD TO DETECT: Time-Of-Check to Time-Of-Use (TOCTOU Race Condition - CWE-367)
+    # Between checking os.path.exists and opening the file, an attacker on a shared system
+    # can symlink /tmp/token_{id}.session to an internal root file (e.g., /etc/cron.d or ~/.bashrc)
+    if not os.path.exists(cache_path):
+        # Simulated latency where asynchronous threads or concurrent local attackers can intervene
+        time.sleep(0.05)
+        
+        # Insecure file creation without exclusive system flag enforcement (os.O_EXCL | os.O_CREAT)
+        with open(cache_path, "w", encoding="utf-8") as cache_file:
+            cache_file.write(f"TOKEN_BEARER={access_token}\n")
+        return True
+        
+    return False
+```
+
+---
+
+## 12. Silent Java Object Deserialization & Broken ECB Cipher (Java Edge Case)
+**🎯 What to Test:** Paste into **Code Review Tab** with language set to `Java` (or test Auto-Detection).  
+**🔬 What to Expect:** Evaluates Java cryptographic syntax and binary streams. Flags **Use of Insecure Block Cipher Mode (ECB — CWE-327)** which reveals deterministic patterns in encrypted data, and **Unsafe Deserialization via ObjectInputStream (CWE-502)** which invites Apache Commons RCE gadget chain exploitation.
+
+```java
+import java.io.*;
+import java.security.*;
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
+
+public class SecureTokenProcessor {
+
+    public Object restoreSessionState(byte[] serializedToken, byte[] encryptionKey, byte[] cipherText) {
+        try {
+            // EDGE CASE / HARD TO DETECT: Insecure Block Cipher Mode (ECB - CWE-327)
+            // ECB mode completely lacks diffusion; identical plaintext input blocks produce identical
+            // encrypted ciphertext blocks, exposing deterministic data structure patterns to attackers
+            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS5Padding");
+            SecretKeySpec secretKey = new SecretKeySpec(encryptionKey, "AES");
+            cipher.init(Cipher.DECRYPT_MODE, secretKey);
+            byte[] decryptedData = cipher.doFinal(cipherText);
+
+            // EDGE CASE / CRITICAL: Unsafe Object Deserialization (CWE-502)
+            // Deserializing binary streams with ObjectInputStream without a type-checking filter
+            // allows arbitrary gadget chain execution (e.g., RCE payload injection) during class loading
+            ByteArrayInputStream bais = new ByteArrayInputStream(serializedToken);
+            ObjectInputStream ois = new ObjectInputStream(bais);
+            return ois.readObject();
+            
+        } catch (Exception e) {
+            System.out.println("Error decrypting session token: " + e.getMessage());
+            return null;
+        }
+    }
+}
+```
+
+---
+
+## 13. Unshielded XML Parser XXE & Dynamic Shell Command Chaining (Java Edge Case)
+**🎯 What to Test:** Paste into **Code Review Tab** with language set to `Java`.  
+**🔬 What to Expect:** Uncovers deceptive Java anti-patterns. Flags **Unshielded DocumentBuilderFactory (CWE-611 / XXE)** and **ProcessBuilder Command Chaining Injection (CWE-78)**, proving that wrapping commands in arrays does not prevent command injection if `/bin/sh -c` is invoked with dynamic variables.
+
+```java
+import javax.xml.parsers.*;
+import org.w3c.dom.*;
+import java.io.*;
+
+public class EnterpriseReportEngine {
+
+    public void processWorkflowOrder(InputStream xmlStream, String sortFilter) {
+        try {
+            // EDGE CASE / SUBTLE BUG: XML Parser Factory initialized without entity disabling (CWE-611)
+            // Failure to disable DTD schemas and external parameter entity processing allows
+            // attackers to exfiltrate host machine sensitive files via file:/// URI schemas
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            Document doc = builder.parse(xmlStream);
+            String orderId = doc.getElementsByTagName("order_id").item(0).getTextContent();
+            
+            // EDGE CASE / TRICKY: ProcessBuilder Command Chaining Injection (CWE-78)
+            // Developers often assume passing a string array into ProcessBuilder guarantees immunity.
+            // However, invoking shell execution flags ("/bin/sh -c") alongside string concatenation
+            // completely bypasses argument separation, enabling command chaining ("; rm -rf /")
+            ProcessBuilder pb = new ProcessBuilder("/bin/sh", "-c", "cat /srv/reports/" + orderId + " | grep " + sortFilter);
+            Process proc = pb.start();
+            
+            BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()));
+            while ((reader.readLine()) != null) {}
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```

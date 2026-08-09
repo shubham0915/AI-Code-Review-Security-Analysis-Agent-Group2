@@ -35,7 +35,7 @@
 | **Python Syntax Validation** | **`ast.parse()`:** Built-in Python standard library used to parse the code into an Abstract Syntax Tree. | **`ast.parse()`:** (Unchanged). It remains the fastest, most precise, and natively supported way to check Python syntax in a Python backend. | **Linting integration:** Adding `ruff` or `flake8` to detect deeper logical errors (e.g. unused imports, bad scoping) rather than just syntax formatting. |
 | **Java Syntax Validation** | **Regex Heuristics & `javac` Subprocess:** Initially just counted `{}` braces. Then upgraded to writing temporary files to disk and booting up the heavy Java Compiler (`javac`). *Flaw:* Very slow and requires the server to have a Java JDK installed. | **`javalang` (Pure Python AST):** We replaced the heavy `javac` subprocess with a lightweight, pure Python library. It instantly parses Java code in-memory just like Python's `ast.parse()`, with 0 millisecond delay. | **Tree-sitter:** Upgrading to `tree-sitter-java`, which is the industry standard (used by VS Code / GitHub) for ultra-fast, robust, error-tolerant syntax parsing. |
 | **File Upload Security** | **Blind Extension Trust:** Relied purely on the uploaded file's extension (e.g. `.py` was assumed to be Python). *Flaw:* Vulnerable to spoofing (e.g., uploading a `virus.exe` renamed to `main.py`). | **Magic Byte Content Sniffing:** We pass the raw file bytes through Magika AI. If the file claims to be Python (`.py`) but the AI detects C++ or Executable binaries, we instantly block it with an `Extension Mismatch` error. | **Deep Content Scanning:** Pre-scanning the file for known malware signatures or shell-code patterns before even running the language detection layer. |
-| **Multi-Agent Orchestration (Milestone 3)** | **Monolithic Procedural Scripts:** Tying prompt outputs together sequentially in one large functional block without modular boundaries or state persistence. | **Modular LangGraph State Machine:** Separated responsibilities into standalone nodes (`code_analysis.py`, `security_vuln.py`, `remediation.py`, `pr_summary.py`) orchestrated by a centralized state graph with auto-retry loops and explicit scoring fallbacks. | **Dynamic Agent Routing:** Automatically activating or skipping specific analysis nodes based on file types and preliminary AST complexity scoring. |
+| **Multi-Agent Orchestration (Milestone 3)** | **Monolithic Procedural Scripts:** Tying prompt outputs together sequentially in one large functional block without modular boundaries or state persistence. | **Parallel Fan-Out LangGraph Machine & Static Fallbacks:** Separated responsibilities into modular standalone nodes orchestrated by a concurrent state graph (`graph.py`). Code Quality and RAG Security evaluate simultaneously in parallel tasks, cutting execution time by >50%. Reinforced with authorized defensive auditor prompts and deterministic Bandit linter fallbacks. | **Dynamic Agent Routing:** Automatically activating or skipping specific analysis nodes based on file types and preliminary AST complexity scoring. |
 | **Resilient Vector RAG (Milestones 2 & 3)** | **Single Cloud Provider Dependency:** Relying solely on cloud vector APIs that hang during outages or network disconnections. | **Proactive Probe & HuggingFace Fallback:** Implemented an automated connection probe with exponential backoff that dynamically drops back to local HuggingFace embedding calculations (`nomic-embed-text` / ChromaDB) when cloud endpoints degrade. | **Semantic Re-ranking & Chunking:** Integrating specialized Cohere re-ranking algorithms over dynamic semantic chunk boundaries. |
 | **Intent Guardrails (Milestone 4)** | **Unrestricted Task Queueing:** Passing any string directly to background workers, wasting Celery CPU cycles and tokens on non-code prompt injections and random spam. | **Two-Stage Gatekeeper & Fail-Open Intent Guardrail:** Instant AST syntax verification (<1ms) intercepts invalid code first. Valid syntax undergoes fast LLM intent classification (<500ms). Engineered to **fail open** during network timeouts to ensure high availability. | **Embedding Distance Guardrails:** Replacing conversational prompt classification with instant vector-distance filtering against known prompt injection embeddings. |
 | **Stateful Conversational Memory (Milestone 4)** | **Stateless API Chat Routing:** Asking follow-up questions over HTTP resulted in context resets where the model forgot previous conversational turns and underlying code review defects. | **LangGraph MemorySaver & Cache Injection:** Linked chat checkpointers directly to session IDs (`session:{session_id}:result`), enabling multi-turn conversations with rich recall over static findings and remediation proposals. | **Cross-Session Project Memory:** Expanding conversational memory across entire repository histories rather than isolating context to a single code submission file. |
@@ -121,8 +121,8 @@ AI-Code-Review-Security-Analysis-Agent-Group2/
 3. [System Architecture](#-system-architecture)
    - [Top-Level Architecture](#1-top-level-architecture)
    - [Code Submission Flow](#2-code-submission-flow-milestone-1--implemented)
-   - [Multi-Agent Pipeline](#3-multi-agent-pipeline-milestone-3--planned)
-   - [RAG Pipeline](#4-rag-pipeline-milestone-2--planned)
+   - [Multi-Agent Pipeline](#3-multi-agent-pipeline-milestone-3--implemented-with-parallel-fan-out)
+   - [RAG Pipeline](#4-rag-pipeline-milestone-2--implemented-with-resilient-fallbacks)
    - [Data & Cache Flow](#5-data--cache-flow)
 4. [What Is Implemented (Milestone 1)](#-what-is-implemented-milestone-1)
 5. [Complete Tech Stack](#-complete-tech-stack)
@@ -334,7 +334,7 @@ sequenceDiagram
 
 ---
 
-### 3. Multi-Agent Pipeline *(Milestone 3 — 📋 Planned)*
+### 3. Multi-Agent Pipeline *(Milestone 3 — ✅ Implemented with Parallel Fan-Out)*
 
 > Shows how the five agents work together once triggered by Celery.
 
@@ -371,7 +371,7 @@ flowchart TD
 
 ---
 
-### 4. RAG Pipeline *(Milestone 2 — 📋 Planned)*
+### 4. RAG Pipeline *(Milestone 2 — ✅ Implemented with Resilient Fallbacks)*
 
 > How the knowledge base is built and queried by agents.
 

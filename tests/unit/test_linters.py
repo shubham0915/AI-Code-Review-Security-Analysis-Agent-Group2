@@ -55,4 +55,8 @@ async def test_run_python_linters(mock_bandit, mock_pylint, mock_radon):
 @pytest.mark.asyncio
 async def test_run_java_linters():
     res = await run_java_linters("public class Test {}")
-    assert "pmd" in res
+    # Verify the new Semgrep-based output structure
+    assert "heuristics" in res, "Expected 'heuristics' key in Java linter output"
+    assert "semgrep" in res, "Expected 'semgrep' metadata key in Java linter output"
+    assert isinstance(res["heuristics"], list), "'heuristics' should be a list"
+    assert isinstance(res["semgrep"], dict), "'semgrep' metadata should be a dict"

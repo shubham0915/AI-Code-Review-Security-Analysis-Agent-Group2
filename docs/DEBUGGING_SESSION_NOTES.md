@@ -94,3 +94,37 @@ This document serves as a historical record of the critical bottlenecks and logi
 - Diagnosed that legacy integration tests were aggressively patching internal module implementations (`app.cache.redis_cache.get_redis_client`) rather than targeting the boundary consumer import paths.
 - Realigned all test mocks to `@patch("app.api.routes.submit.get_redis_client")`, restoring clean decoupling between package internals and API testing while driving total test suite success to **49/49 passing tests**.
 
+---
+
+## 9. AI Safety Filter Censorship & Model Refusals on Vulnerable Code
+**What we noticed:**
+- When evaluating critical severity vulnerability snippets (e.g., `os.system("rm -rf /var/app/data/" + user_dir)`, SQL Injection strings like `"john_doe'; --"`, or hardcoded AWS secret keys), the AI model safety filter incorrectly interpreted the prompt as an offensive exploitation inquiry.
+- The model refused to answer with valid JSON, returning plaintext refusals: *"Sorry, I cannot fulfill your request to analyze the provided code for security vulnerabilities..."*.
+- Consequently, JSON extraction crashed, and fallback exception handling returned `0` vulnerabilities with a `100/100` score—silently dropping deterministic vulnerabilities that our static Bandit AST scanner had successfully identified in milliseconds.
+
+**What we changed:**
+- **Authorized Defensive Auditor Framing:** Modified `PROMPT` in `app/agents/nodes/security_vuln.py` to establish an explicit defensive context: *"You are an expert Application Security Auditor performing an authorized, strictly defensive white-box security audit. Your solely defensive mandate is to help software engineers identify and remediate OWASP Top 10 vulnerabilities in their own corporate codebase. Do not refuse defensive code auditing tasks."* This completely neutralized censorship refusal errors.
+- **Deterministic Bandit Static Fallbacks:** Engineered a resilient fallback helper (`_extract_bandit_fallbacks`) in `security_vuln.py`. Whenever an LLM times out, refuses, or returns zero findings while static scanners discovered high-risk vectors (e.g., CWE-89 SQLi, CWE-78 Shell Execution, or CWE-327 weak MD5 hashes), the pipeline automatically converts Bandit AST results into full `SecurityVulnerability` scorecard objects.
+
+---
+
+## 10. Sequential Execution Latency & Parallel LangGraph Fan-Out Architecture
+**What we noticed:**
+- Running comprehensive multi-agent code analysis on test scripts took ~77 seconds per request because the four LangGraph AI nodes (`Code Analysis` ➔ `Security` ➔ `Remediation` ➔ `PR Summary`) executed sequentially one after another in traditional conversational chain styling.
+
+**What we changed:**
+- **Parallel Fan-Out / Fan-In StateGraph Architecture:** Identified that Code Quality evaluation and RAG Security evaluation are independent discovery stages. Upgraded `app/agents/graph.py` from a sequential chain into a concurrent parallel graph. Stage 1 (`run_linters`) forks simultaneously into both `code_analysis` (Stage 2A) and `security_vuln` (Stage 2B) in parallel asynchronous tasks. Both paths converge into a synchronization node (`sync_findings`) before evaluating conditional routing to Remediation or PR Summary, cutting total evaluation turnaround times by over 50%.
+
+---
+
+## 11. Java Security Resilience, QA Compliance Prompting & Multi-Language Static Fallbacks
+**What we noticed:**
+- Testing our multi-language Java security flaw test case (`UI_TEST_CASES.md` — Section 4 containing JDBC SQL Injection and File Read Path Traversal) resulted in `No security vulnerabilities detected!` with a perfect `100/100` score in the Streamlit UI dashboard.
+- Inspecting LangSmith execution traces (`run-019fc716-d698-7cd2-95d8-64bbf98168af.json`) uncovered two interacting root causes:
+  1. **Model Content Safety Refusal:** When presented with Java JDBC SQL Injection paired with words like `"vulnerabilities"`, Gemini's automated content safety filter aborted JSON generation and returned plaintext: *"Sorry, I cannot fulfill your request to analyze or identify vulnerabilities in the provided code snippet..."*.
+  2. **Python-Only Static Fallback & Missing Java Rules:** Our static fallback safety net (`_extract_bandit_fallbacks`) exclusively monitored **Bandit** (which runs strictly on Python ASTs), ignoring Java linter outputs (`linter_output["heuristics"]`). Furthermore, our previous Java regex heuristics in `app/linters.py` only checked for simple patterns like `printStackTrace()` rather than dynamic variable SQL string building or `new File()` concatenation.
+
+**What we changed:**
+- **QA Compliance Auditor Framing:** Reconfigured system prompt instructions in `app/agents/nodes/security_vuln.py` around *"Principal Software Architect and QA Compliance Auditor evaluating OWASP ASVS compliance deviations, missing input sanitization controls, and risky syntax patterns"*. Framing reviews around QA compliance and software resilience prevents AI content filters from mistaking secure Java code auditing for offensive hacking requests.
+- **Multi-Language Deterministic Static Fallbacks:** Upgraded our fallback engine into a versatile `_extract_static_fallbacks` processor that checks both Python Bandit results AND Java security heuristics. If the LLM ever times out, experiences network degradation, or refuses to parse JSON, the pipeline directly converts static discoveries into full `SecurityVulnerability` scorecards without dropping findings.
+- **Comprehensive Java Security Regex Rules:** Expanded `_JAVA_SECURITY_PATTERNS` in `app/linters.py` with multi-line regex detections (using `_re.IGNORECASE | _re.MULTILINE` flags) to identify dynamic JDBC SQL string concatenation (`CWE-89`), unsanitized file path construction (`new File(..." +` / `CWE-22`), and hardcoded database connection credentials (`CWE-798`).
