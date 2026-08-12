@@ -157,6 +157,33 @@ defects = [
      "Scoped MemorySaver checkpoint storage to in-process Python memory (not Redis) to isolate chat session state from the main analysis cache. Chat context is now preserved for the lifetime of the Celery worker process regardless of Redis cache flushes.",
      "2025-02-19", "Closed",
      "Redis flush is a maintenance operation that should not break user chat sessions. In-process MemorySaver is the correct scope for single-user conversation threads."),
+    (16, "Shubham", "2025-03-01",
+     "Celery worker repeatedly crashing with SIGSEGV (Segmentation Fault) on macOS Apple Silicon (M1/M2) during LangGraph execution. Parallel AI nodes causing fatal OS-level multiprocessing collision.",
+     "Sprint 4", "Shubham", "Logical",
+     "Switched Celery worker from default 'prefork' pool to '--pool=solo'. This avoids the macOS fork() safety issues with C-extensions (like grpc/LangGraph). Updated HOW_TO_RUN.md to mandate this flag for local dev.",
+     "2025-03-02", "Closed",
+     "Critical blocker resolved. Prefork on macOS + Python C-extensions is notoriously unstable. Solo pool guarantees stability for local testing."),
+
+    (17, "Shubham", "2025-03-02",
+     "React UI crashing completely when viewing PR Summary if the backend 'pr_summary' JSON payload was missing the 'release_notes' key (e.g. LLM failed to generate it). Caused by calling .map() on undefined.",
+     "Sprint 4", "Shubham", "Logical",
+     "Added strict null-checks and type fallback in PRSummaryPanel.tsx: 'const release_notes = Array.isArray(result.pr_summary.release_notes) ? result.pr_summary.release_notes : [];'.",
+     "2025-03-03", "Closed",
+     "UI must always program defensively against AI JSON payload structure variations."),
+
+    (18, "Shubham", "2025-03-04",
+     "Generic recharts BarChart in Results Panel misaligned; the Y-axis label for 'Security' is truncated to 'ecurity' and overall looks aesthetically poor compared to a premium dashboard.",
+     "Sprint 4", "Shubham", "User Interface",
+     "Removed the recharts BarChart entirely. Replaced it with custom CSS glassmorphism progress bars that smoothly animate width from 0% using inline Tailwind gradients.",
+     "2025-03-05", "Closed",
+     "Massive UX improvement. Typography fixed and the progress bars look significantly more premium."),
+
+    (19, "Shubham", "2025-03-05",
+     "Markdown tables in the PR Summary view are rendering as raw pipe-delimited text (e.g. | ID | Severity |) because standard react-markdown ignores GitHub-Flavored Markdown table syntax.",
+     "Sprint 4", "Shubham", "User Interface",
+     "Installed 'remark-gfm' via npm. Passed remarkGfm plugin into the ReactMarkdown component. Added custom Tailwind 'prose' classes to style the table headers and borders to match the dark-mode aesthetic.",
+     "2025-03-06", "Closed",
+     "Tables now perfectly render as native HTML <table> elements, making the AI Code Review report significantly easier to read."),
 ]
 
 # ── Write rows ─────────────────────────────────────────────────────────────────

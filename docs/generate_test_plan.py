@@ -240,6 +240,22 @@ tests = [
          "Invoke local_validate() directly with invalid Python code",
          "SyntaxError code passed to frontend local validator",
          "Validation error message string returned (non-empty)", "Passed"),
+    (51, "React UI — Severity Normalization",
+         "Mount ResultsPanel.tsx with mock finding containing 'CRITICAL' severity",
+         "normalizeSeverity() parses raw severity string",
+         "Finding binned into the 'High / Critical' top tier visual group", "Passed"),
+    (52, "React UI — PR Summary Fallbacks",
+         "Mount PRSummaryPanel.tsx with missing release_notes array in payload",
+         "Array.isArray() checks execute before .map()",
+         "Component gracefully renders 'No release notes generated.' without crashing", "Passed"),
+    (53, "React UI — PDF Export Button",
+         "Click 'Download Full PDF Report' in Results Panel",
+         "react-to-print hook invoked targeting the reportRef DOM node",
+         "Browser native print dialog opens; @media print CSS rules perfectly retain dark mode", "Passed"),
+    (54, "Celery Concurrency — macOS Apple Silicon",
+         "Start Celery worker with --pool=solo flag and submit LangGraph request",
+         "Parallel graph execution via asyncio occurs inside the single solo worker process",
+         "Task completes successfully without SIGSEGV fork() collisions", "Passed"),
 ]
 
 for row_idx, (sl, name, proc, cond, expected, actual) in enumerate(tests, 2):

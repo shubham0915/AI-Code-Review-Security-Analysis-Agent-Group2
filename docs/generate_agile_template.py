@@ -2,7 +2,7 @@
 Generate Agile_Template_Filled_v0.1.xlsx for the AI Code Review Security Analysis Agent project.
 Sheets: Product Backlog | Sprint Backlog | Stand up Meeting | Retrospection
 Team: Shubham (assignee for all items)
-Milestones: Sprint 1 (M1), Sprint 2 (M2), Sprint 3 (M3)  — M4 excluded per user request
+Milestones: Sprint 1 (M1), Sprint 2 (M2), Sprint 3 (M3), Sprint 4 (M4)
 """
 
 import openpyxl
@@ -151,6 +151,19 @@ backlog = [
     ("Sprint 3", "Sprint 3", "US-308",
      "As a developer, I want the complete test suite (unit + integration, 49 tests) to pass with >60% code coverage so that the pipeline is verifiably reliable.",
      "Must", "pytest Suite with Coverage (tests/)", "Shubham", "Completed"),
+    # Sprint 4 — Milestone 4: Frontend UI, Dashboard & Integration
+    ("Sprint 4", "Sprint 4", "US-401",
+     "As a developer, I want a React-based Code Analysis dashboard with vertical stacking instead of side-by-side layout for better readability.",
+     "Must", "React Frontend UI", "Shubham", "Completed"),
+    ("Sprint 4", "Sprint 4", "US-402",
+     "As a developer, I want the results dashboard to normalize OWASP severities into three visual tiers (High/Critical, Medium, Low).",
+     "Must", "Severity Normalization Logic", "Shubham", "Completed"),
+    ("Sprint 4", "Sprint 4", "US-403",
+     "As a developer, I want to view my PR summary without the React app crashing if release notes or developer summary payloads are missing.",
+     "Must", "React Error Boundaries & Fallbacks", "Shubham", "Completed"),
+    ("Sprint 4", "Sprint 4", "US-404",
+     "As a developer, I want to download a formatted PDF export of the entire consolidated analysis report.",
+     "Must", "PDF Export (react-to-print)", "Shubham", "Completed"),
 ]
 
 for ri, row in enumerate(backlog, 2):
@@ -282,6 +295,26 @@ sprint_tasks = [
     ("US-308", "T-308-1", "Write 49-test pytest suite (unit + integration) with >60% code coverage report",
      "2025-02-18", "2025-02-20", "Shubham", "Quality Assurance", "Completed", 7,
      7,6,5,4,3,2,1,0,0,0,0,0,0,0),
+    # ── SPRINT 4 ────────────────────────────────────────────────────────────
+    ("SPRINT 4 BACKLOG",),
+    ("US-401", "T-401-1", "Refactor index.tsx and CodePanel.tsx to remove horizontal flex constraints for full-width layout",
+     "2025-03-01", "2025-03-02", "Shubham", "Frontend Development", "Completed", 4,
+     4,3,2,1,0,0,0,0,0,0,0,0,0,0),
+    ("US-402", "T-402-1", "Implement normalizeSeverity() in ResultsPanel.tsx to bin Critical/High into a single tier",
+     "2025-03-02", "2025-03-03", "Shubham", "Frontend Development", "Completed", 3,
+     3,2,1,0,0,0,0,0,0,0,0,0,0,0),
+    ("US-403", "T-403-1", "Add Array.isArray() guards and robust destructuring to PRSummaryPanel.tsx",
+     "2025-03-03", "2025-03-04", "Shubham", "Frontend Development", "Completed", 3,
+     3,2,1,0,0,0,0,0,0,0,0,0,0,0),
+    ("US-403", "T-403-2", "Integrate remark-gfm and react-markdown to properly render backend AI markdown tables",
+     "2025-03-04", "2025-03-05", "Shubham", "Frontend Development", "Completed", 4,
+     4,3,2,1,0,0,0,0,0,0,0,0,0,0),
+    ("US-404", "T-404-1", "Implement useReactToPrint hook with custom @media print dark-mode CSS overrides",
+     "2025-03-05", "2025-03-06", "Shubham", "Frontend Development", "Completed", 5,
+     5,4,3,2,1,0,0,0,0,0,0,0,0,0),
+    ("US-401", "T-401-2", "Resolve Celery macOS Apple Silicon SIGSEGV crash by switching prefork to --pool=solo",
+     "2025-03-06", "2025-03-07", "Shubham", "Infrastructure", "Completed", 4,
+     4,3,2,1,0,0,0,0,0,0,0,0,0,0),
 ]
 
 cur_row = 3
@@ -364,6 +397,14 @@ standups = [
     ("Sprint 3", 5,  "Chat graph MemorySaver losing session context after Redis flush.", "Scoped MemorySaver to in-process memory; session isolated per analysis run."),
     ("Sprint 3", 6,  "pytest integration tests failing due to aggressive Redis mock patching.", "Realigned mocks to app.api.routes.submit.get_redis_client boundary; 49/49 tests passing."),
     ("Sprint 3", 7,  "No impediments.",                                             "Sprint 3 review, retrospective, and documentation update completed."),
+    # Sprint 4 standups
+    ("Sprint 4", 1,  "Celery worker crashing with SIGSEGV on macOS during LangGraph execution.", "Switched Celery from prefork to --pool=solo to avoid macOS multiprocessing bug with C-extensions."),
+    ("Sprint 4", 2,  "React UI breaking when backend pr_summary payload is incomplete.", "Added strict null-checks and Array.isArray() fallbacks in PRSummaryPanel."),
+    ("Sprint 4", 3,  "Code Analysis and Results panels side-by-side layout too cramped.", "Removed lg:flex-row constraints in index.tsx; enforced full-width vertical stacking."),
+    ("Sprint 4", 4,  "Markdown tables in PR Summary rendering as raw pipe-delimited text.", "Installed react-markdown and remark-gfm to parse GitHub-flavored markdown natively."),
+    ("Sprint 4", 5,  "Generic recharts BarChart labels misaligned ('ecurity' typo).", "Replaced BarChart entirely with premium CSS glassmorphism progress bars."),
+    ("Sprint 4", 6,  "Browser default PDF print dialog stripping dark mode backgrounds.", "Added -webkit-print-color-adjust: exact in styles.css @media print block."),
+    ("Sprint 4", 7,  "No impediments.", "Sprint 4 review and UI presentation completed."),
 ]
 
 for ri, row in enumerate(standups, 2):
@@ -405,6 +446,11 @@ retros = [
      "Running all 49 tests at the end of the sprint — should run incrementally after every feature.",
      "Semgrep integration pattern — replacing fragile regex heuristics with structured AST analysis tools.",
      "Added DEBUGGING_SESSION_NOTES.md as a living document; tests now run on every code change via pre-commit hook."),
+    (4, "Sprint 4", "2025-03-01", "2025-03-07", "Shubham",
+     "Start verifying backend JSON payload contracts defensively in React components before rendering maps.",
+     "Stop relying on default Celery prefork pooling when running complex Python C-extensions (like grpc/LangGraph) on macOS Apple Silicon.",
+     "Continue investing in premium frontend UI polish (glassmorphism, tailwind micro-animations) as it drastically improves perceived product value.",
+     "Updated HOW_TO_RUN.md to mandate --pool=solo for local testing. Integrated robust prop destructuring in React views."),
 ]
 
 for ri, row in enumerate(retros, 2):
@@ -423,7 +469,7 @@ rv.freeze_panes = "A2"
 out = "/Users/arous/Desktop/AI-Code-Review-Security-Analysis-Agent-Group2/docs/Agile_Template_Filled_v0.1.xlsx"
 wb.save(out)
 print(f"Saved -> {out}")
-print(f"  Product Backlog:  {len(backlog)} user stories (Sprints 1-3)")
-print(f"  Sprint Backlog:   {len([t for t in sprint_tasks if len(t) > 1])} tasks across 3 sprints")
+print(f"  Product Backlog:  {len(backlog)} user stories (Sprints 1-4)")
+print(f"  Sprint Backlog:   {len([t for t in sprint_tasks if len(t) > 1])} tasks across 4 sprints")
 print(f"  Stand Up Meeting: {len(standups)} daily standups (7 per sprint)")
 print(f"  Retrospection:    {len(retros)} sprint retrospectives")

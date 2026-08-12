@@ -23,6 +23,12 @@ def get_llm():
     settings = get_settings()
 
     if settings.using_gemini:
+        # MONKEYPATCH LangChain's hardcoded tenacity retry loop.
+        # This prevents the app from hanging for 2 minutes when hitting a 429 Quota Exceeded limit.
+        import langchain_google_genai.chat_models
+        from tenacity import retry, stop_after_attempt
+        langchain_google_genai.chat_models._create_retry_decorator = lambda: retry(stop=stop_after_attempt(1))
+
         from langchain_google_genai import ChatGoogleGenerativeAI
         logger.info(f"LLM: Gemini → {settings.gemini_primary_model}")
         return ChatGoogleGenerativeAI(
@@ -30,6 +36,7 @@ def get_llm():
             google_api_key=settings.gemini_api_key,
             temperature=settings.gemini_temperature,
             convert_system_message_to_human=True,  # Required for Gemini compatibility
+            max_retries=0, # Fail immediately on 429 Quota Exceeded instead of waiting minutes
         )
 
     # Ollama local fallback
@@ -53,6 +60,11 @@ def get_fast_llm():
     settings = get_settings()
 
     if settings.using_gemini:
+        # Monkeypatch again just to be safe (it's globally cached anyway)
+        import langchain_google_genai.chat_models
+        from tenacity import retry, stop_after_attempt
+        langchain_google_genai.chat_models._create_retry_decorator = lambda: retry(stop=stop_after_attempt(1))
+        
         from langchain_google_genai import ChatGoogleGenerativeAI
         logger.info(f"Fast LLM: Gemini → {settings.gemini_fast_model}")
         return ChatGoogleGenerativeAI(
@@ -60,6 +72,7 @@ def get_fast_llm():
             google_api_key=settings.gemini_api_key,
             temperature=settings.gemini_temperature,
             convert_system_message_to_human=True,
+            max_retries=0, # Fail immediately on 429 Quota Exceeded instead of waiting minutes
         )
 
     from langchain_community.chat_models import ChatOllama
