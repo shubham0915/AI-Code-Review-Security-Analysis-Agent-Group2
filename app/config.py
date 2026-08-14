@@ -26,9 +26,10 @@ class Settings(BaseSettings):
     app_secret_key: str = "dev-secret-key-change-in-production"
     log_level: str = "INFO"
 
-    # "gemini" → uses Gemini API (fast, free tier, needs internet)
+    # "groq"   → uses Groq LPU (fast, requires GROQ_API_KEY)
+    # "gemini" → uses Gemini API (free tier, needs internet)
     # "ollama" → uses local Ollama (private, offline, needs install)
-    llm_provider: str = "gemini"
+    llm_provider: str = "groq"
 
     gemini_api_key: str = ""
     gemini_primary_model: str = "gemini-2.0-flash"
