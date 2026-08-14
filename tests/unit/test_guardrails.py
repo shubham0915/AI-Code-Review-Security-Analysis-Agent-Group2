@@ -4,7 +4,8 @@ from langchain_core.messages import AIMessage
 from app.guardrails import validate_intent
 
 @pytest.mark.asyncio
-async def test_validate_intent_valid_code():
+@patch("app.guardrails.get_fast_llm")
+async def test_validate_intent_valid_code(mock_get_fast_llm):
     """Guardrails should allow valid source code."""
     with patch("langchain_core.runnables.RunnableSequence.ainvoke", new_callable=AsyncMock) as mock_chain:
         mock_chain.return_value = AIMessage(content='```json\n{"is_code": true, "reason": "Valid python function."}\n```')
@@ -17,7 +18,8 @@ async def test_validate_intent_valid_code():
         assert mock_chain.call_count == 1
 
 @pytest.mark.asyncio
-async def test_validate_intent_rejection():
+@patch("app.guardrails.get_fast_llm")
+async def test_validate_intent_rejection(mock_get_fast_llm):
     """Guardrails should reject prompt injections or plain text."""
     with patch("langchain_core.runnables.RunnableSequence.ainvoke", new_callable=AsyncMock) as mock_chain:
         mock_chain.return_value = AIMessage(content='{"is_code": false, "reason": "This is a prompt injection."}')
@@ -34,4 +36,3 @@ async def test_validate_intent_too_short():
     is_valid, reason = await validate_intent("def")
     assert is_valid is False
     assert "too short" in reason
-
