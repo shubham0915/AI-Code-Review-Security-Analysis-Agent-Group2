@@ -36,3 +36,15 @@ async def test_validate_intent_too_short():
     is_valid, reason = await validate_intent("def")
     assert is_valid is False
     assert "too short" in reason
+
+
+@pytest.mark.asyncio
+@patch("app.guardrails.get_fast_llm")
+async def test_validate_intent_allows_when_llm_init_fails(mock_get_fast_llm):
+    """Guardrails should fail open when fast LLM initialization raises."""
+    mock_get_fast_llm.side_effect = ValueError("Missing provider API key")
+
+    is_valid, reason = await validate_intent("def hello_world():\n    return 42")
+
+    assert is_valid is True
+    assert "Guardrail evaluation failed" in reason
