@@ -64,11 +64,10 @@ async def validate_intent(code: str) -> tuple[bool, str]:
     if len(code.strip()) < 5:
         return False, "Input is too short to be meaningful code."
 
-    llm = get_fast_llm()
-    prompt = ChatPromptTemplate.from_template(PROMPT)
-    chain = prompt | llm
-
     try:
+        llm = get_fast_llm()
+        prompt = ChatPromptTemplate.from_template(PROMPT)
+        chain = prompt | llm
         with logfire.span("🛡️ Intent Guardrail"):
             raw_response = await chain.ainvoke({"code": code[:2000]})  # Only check first 2k chars to save time/tokens
             raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)

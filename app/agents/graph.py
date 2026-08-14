@@ -106,12 +106,10 @@ def build_analysis_graph():
     builder.add_node("remediation",    remediation_node)
     builder.add_node("pr_summary",     pr_summary_node)
 
-    # Parallel Fan-Out directly from START (no separate linters node)
+    # LangGraph v0.1.19 allows only one direct path from START without
+    # annotated merge keys, so run discovery stages sequentially.
     builder.add_edge(START,           "code_analysis")
-    builder.add_edge(START,           "security_vuln")
-
-    # Parallel Fan-In Convergence Edges
-    builder.add_edge("code_analysis", "sync_findings")
+    builder.add_edge("code_analysis", "security_vuln")
     builder.add_edge("security_vuln", "sync_findings")
 
     # Conditional edge: skip remediation for clean code
