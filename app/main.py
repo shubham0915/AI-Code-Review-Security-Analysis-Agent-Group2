@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 logfire.configure()
 from app.config import get_settings
-from app.api.routes import health, submit, status, result, rag, chat
+from app.api.routes import health, submit, status, result, rag, chat, ws
 from app.cache import close_redis
 from app.tracing import check_langsmith_connection
 
@@ -140,6 +140,7 @@ app.include_router(status.router)
 app.include_router(result.router)
 app.include_router(rag.router)
 app.include_router(chat.router)
+app.include_router(ws.router, prefix="/api/v1/ws", tags=["websocket"])
 
 @app.get("/", include_in_schema=False)
 async def root():

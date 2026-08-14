@@ -67,6 +67,7 @@ class SubmissionResponse(BaseModel):
     submitted_at: datetime = Field(default_factory=datetime.utcnow)
     estimated_seconds: int = Field(45, description="Estimated processing time in seconds")
     message: str = "Code submitted successfully. Analysis queued."
+    is_cached: bool = False
 
     model_config = {
         "json_schema_extra": {
@@ -77,6 +78,7 @@ class SubmissionResponse(BaseModel):
                 "lines_of_code": 4,
                 "estimated_seconds": 45,
                 "message": "Code submitted successfully. Analysis queued.",
+                "is_cached": False,
             }
         }
     }

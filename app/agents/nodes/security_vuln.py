@@ -235,13 +235,15 @@ async def run_security_vuln(state: AgentState) -> dict:
             if not result.vulnerabilities and has_static:
                 logger.info("[SECURITY] LLM returned zero vulnerabilities; populating directly from static detections.")
                 result.vulnerabilities = _extract_static_fallbacks(linter_out)
-                result.critical_count = sum(1 for v in result.vulnerabilities if v.severity == Severity.critical or v.severity == "critical")
-                result.high_count = sum(1 for v in result.vulnerabilities if v.severity == Severity.high or v.severity == "high")
-                result.medium_count = sum(1 for v in result.vulnerabilities if v.severity == Severity.medium or v.severity == "medium")
-                result.low_count = sum(1 for v in result.vulnerabilities if v.severity == Severity.low or v.severity == "low")
-                result.security_score = max(0, 100 - (result.critical_count * 40 + result.high_count * 25 + result.medium_count * 10 + result.low_count * 5))
-                if not result.summary or result.summary == "No security vulnerabilities found.":
-                    result.summary = f"Detected {len(result.vulnerabilities)} vulnerability vector(s) via static security scanning."
+            vulns = result.vulnerabilities or []
+            result.vulnerabilities = vulns
+            result.critical_count = sum(1 for v in vulns if v.severity == Severity.critical or v.severity == "critical")
+            result.high_count = sum(1 for v in vulns if v.severity == Severity.high or v.severity == "high")
+            result.medium_count = sum(1 for v in vulns if v.severity == Severity.medium or v.severity == "medium")
+            result.low_count = sum(1 for v in vulns if v.severity == Severity.low or v.severity == "low")
+            result.security_score = max(0, 100 - (result.critical_count * 40 + result.high_count * 25 + result.medium_count * 10 + result.low_count * 5))
+            if not result.summary or result.summary == "No security vulnerabilities found.":
+                result.summary = f"Detected {len(vulns)} vulnerability vector(s) via static security scanning."
             
             logger.info(
                 f"[SECURITY] OK (attempt {attempt + 1}). "

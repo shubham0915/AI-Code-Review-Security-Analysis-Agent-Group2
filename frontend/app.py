@@ -1082,8 +1082,11 @@ with tab_submit:
 
                 if isinstance(resp.get("detail"), dict):
                     st.error("❌ Submission failed — validation errors:")
-                    for err in resp["detail"].get("errors", []):
-                        st.code(err.get("message", ""), language="text")
+                    if "errors" in resp["detail"]:
+                        for err in resp["detail"]["errors"]:
+                            st.code(err.get("message", ""), language="text")
+                    elif "reason" in resp["detail"]:
+                        st.code(f"{resp['detail'].get('message', '')}\nReason: {resp['detail']['reason']}", language="text")
                 elif resp.get("error"):
                     st.error(f"❌ {resp['error']}")
                 else:

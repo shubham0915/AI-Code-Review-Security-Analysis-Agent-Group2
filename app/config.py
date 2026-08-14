@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout: int = 120
 
+    # Groq (LPUs)
+    groq_api_key: str = ""
+    groq_primary_model: str = "llama-3.3-70b-versatile"
+    groq_fast_model: str = "llama-3.1-8b-instant"
+
     # ChromaDB
     chroma_persist_dir: str = "./data/chroma_db"
     chroma_owasp_collection: str = "owasp_knowledge_base"
@@ -101,6 +106,13 @@ class Settings(BaseSettings):
     Determines whether local Ollama is configured as the active LLM backend provider.
     """
         return self.llm_provider.lower() == "ollama"
+
+    @property
+    def using_groq(self) -> bool:
+        """
+        Determines whether Groq is configured as the active LLM backend provider.
+        """
+        return self.llm_provider.lower() == "groq"
 
 
 @lru_cache

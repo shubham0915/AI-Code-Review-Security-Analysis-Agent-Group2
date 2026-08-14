@@ -47,6 +47,7 @@ def run_full_analysis(self, session_id: str) -> dict:
         session["started_at"] = datetime.utcnow().isoformat()
         session["current_stage"] = "preprocessing"
         r.setex(f"session:{session_id}", settings.redis_session_ttl, json.dumps(session))
+        r.publish(f"ws:{session_id}", json.dumps({"type": "status", "status": "running"}))
 
         logger.info(f"Analysis started: {session_id} | lang={language}")
         print(f"[CELERY] Analysis started: {session_id} | lang={language}", flush=True)
@@ -63,6 +64,10 @@ def run_full_analysis(self, session_id: str) -> dict:
         }
         print("[CELERY] Invoking LangGraph pipeline...", flush=True)
 
+        def pydantic_to_dict(model):
+            """Safely serialize a Pydantic model to a dict for Redis JSON storage."""
+            return model.model_dump() if model else None
+
         # ── LangSmith: run the full pipeline inside a named traceable span ──────
         @traceable(
             name="FullAnalysisPipeline",
@@ -76,8 +81,33 @@ def run_full_analysis(self, session_id: str) -> dict:
             project_name="codeANALYSIS",
         )
         async def _invoke_pipeline(state: dict) -> dict:
-            """Inner async wrapper so the whole graph is one LangSmith span."""
-            return await analysis_graph.ainvoke(state)
+            """Inner async wrapper to stream events and return final state."""
+            current_state = state.copy()
+            async for output in analysis_graph.astream(state):
+                for node_name, node_output in output.items():
+                    print(f"[CELERY] Node completed: {node_name}", flush=True)
+                    node_output = node_output or {}
+                    current_state.update(node_output)
+                    
+                    payload = None
+                    if node_name == "code_analysis":
+                        payload = pydantic_to_dict(node_output.get("code_analysis_result"))
+                    elif node_name == "security_vuln":
+                        payload = pydantic_to_dict(node_output.get("security_analysis_result"))
+                    elif node_name == "remediation":
+                        payload = pydantic_to_dict(node_output.get("remediation_result"))
+                    elif node_name == "pr_summary":
+                        payload = pydantic_to_dict(node_output.get("pr_summary_result"))
+                        
+                    if payload:
+                        msg = {
+                            "type": "node_complete",
+                            "node": node_name,
+                            "data": payload
+                        }
+                        r.publish(f"ws:{session_id}", json.dumps(msg))
+                        
+            return current_state
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -93,10 +123,6 @@ def run_full_analysis(self, session_id: str) -> dict:
         sec_res = final_state.get("security_analysis_result")
         rem_res = final_state.get("remediation_result")
         pr_res = final_state.get("pr_summary_result")
-
-        def pydantic_to_dict(model):
-            """Safely serialize a Pydantic model to a dict for Redis JSON storage."""
-            return model.model_dump() if model else None
 
         pipeline_result = {
             "session_id": session_id,
@@ -127,6 +153,7 @@ def run_full_analysis(self, session_id: str) -> dict:
         session["completed_at"] = datetime.utcnow().isoformat()
         session["current_stage"] = "done"
         r.setex(f"session:{session_id}", settings.redis_session_ttl, json.dumps(session))
+        r.publish(f"ws:{session_id}", json.dumps({"type": "status", "status": "completed"}))
 
         logger.info(f"Analysis completed: {session_id}")
         log_trace_url(session_id)  # Logs LangSmith trace URL to console
@@ -138,4 +165,5 @@ def run_full_analysis(self, session_id: str) -> dict:
         session["status"] = "failed"
         session["error_message"] = str(exc)
         r.setex(f"session:{session_id}", settings.redis_session_ttl, json.dumps(session))
+        r.publish(f"ws:{session_id}", json.dumps({"type": "status", "status": "failed", "error": str(exc)}))
         raise self.retry(exc=exc, countdown=10)

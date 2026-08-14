@@ -151,6 +151,7 @@ async def submit_code_paste(request: CodeSubmissionRequest) -> SubmissionRespons
                     lines_of_code=loc,
                     estimated_seconds=0,
                     message="Returning cached analysis result.",
+                    is_cached=True,
                 )
             else:
                 logger.warning(f"Cache hit for {cached_sid} but result has no agent data — re-queuing.")

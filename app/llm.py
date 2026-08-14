@@ -29,7 +29,7 @@ def get_llm():
         from tenacity import retry, stop_after_attempt
         langchain_google_genai.chat_models._create_retry_decorator = lambda: retry(stop=stop_after_attempt(1))
 
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
         logger.info(f"LLM: Gemini → {settings.gemini_primary_model}")
         return ChatGoogleGenerativeAI(
             model=settings.gemini_primary_model,
@@ -37,6 +37,24 @@ def get_llm():
             temperature=settings.gemini_temperature,
             convert_system_message_to_human=True,  # Required for Gemini compatibility
             max_retries=0, # Fail immediately on 429 Quota Exceeded instead of waiting minutes
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            timeout=15.0, # Strict 15s timeout to prevent 10-minute network hangs
+        )
+
+    if settings.using_groq:
+        from langchain_groq import ChatGroq
+        logger.info(f"LLM: Groq → {settings.groq_primary_model}")
+        return ChatGroq(
+            model=settings.groq_primary_model,
+            groq_api_key=settings.groq_api_key,
+            temperature=0.1,
+            max_retries=0,
+            timeout=15.0,
         )
 
     # Ollama local fallback
@@ -65,7 +83,7 @@ def get_fast_llm():
         from tenacity import retry, stop_after_attempt
         langchain_google_genai.chat_models._create_retry_decorator = lambda: retry(stop=stop_after_attempt(1))
         
-        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_google_genai import ChatGoogleGenerativeAI, HarmCategory, HarmBlockThreshold
         logger.info(f"Fast LLM: Gemini → {settings.gemini_fast_model}")
         return ChatGoogleGenerativeAI(
             model=settings.gemini_fast_model,
@@ -73,6 +91,24 @@ def get_fast_llm():
             temperature=settings.gemini_temperature,
             convert_system_message_to_human=True,
             max_retries=0, # Fail immediately on 429 Quota Exceeded instead of waiting minutes
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            },
+            timeout=15.0, # Strict 15s timeout to prevent 10-minute network hangs
+        )
+
+    if settings.using_groq:
+        from langchain_groq import ChatGroq
+        logger.info(f"Fast LLM: Groq → {settings.groq_fast_model}")
+        return ChatGroq(
+            model=settings.groq_fast_model,
+            groq_api_key=settings.groq_api_key,
+            temperature=0.1,
+            max_retries=0,
+            timeout=15.0,
         )
 
     from langchain_community.chat_models import ChatOllama
