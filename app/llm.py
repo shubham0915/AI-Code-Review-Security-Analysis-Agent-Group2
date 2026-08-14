@@ -134,7 +134,10 @@ def get_embeddings():
     """
     settings = get_settings()
 
-    if settings.using_gemini:
+    if settings.using_gemini or settings.using_groq:
+        # Since Groq provides blazing fast LLMs but no native embeddings endpoint yet,
+        # we fallback to Gemini embeddings so we don't break compatibility with the 
+        # existing vectors stored in ChromaDB.
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
         logger.info(f"Embeddings: Gemini → {settings.gemini_embed_model}")
         return GoogleGenerativeAIEmbeddings(
