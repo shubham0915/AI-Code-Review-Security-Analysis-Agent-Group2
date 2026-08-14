@@ -77,7 +77,7 @@ def state_with_findings() -> AgentState:
 # ─── Agent 1: Code Analysis ───────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-@patch("app.agents.nodes.code_analysis.get_fast_llm")
+@patch("app.agents.nodes.code_analysis.get_llm")
 async def test_run_code_analysis(mock_get_llm, sample_state):
     """Code Analysis Agent should return a valid CodeAnalysisResult."""
     with patch(
@@ -95,7 +95,7 @@ async def test_run_code_analysis(mock_get_llm, sample_state):
 
 
 @pytest.mark.asyncio
-@patch("app.agents.nodes.code_analysis.get_fast_llm")
+@patch("app.agents.nodes.code_analysis.get_llm")
 async def test_run_code_analysis_json_fallback(mock_get_llm, sample_state):
     """Code Analysis Agent should use error fallback when LLM returns invalid JSON twice."""
     with patch(
