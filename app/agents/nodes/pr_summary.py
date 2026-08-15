@@ -46,15 +46,15 @@ You MUST respond with ONLY a valid raw JSON object. No markdown, no code fences,
 Use exactly this structure:
 {{
   "agent": "PRSummaryAgent",
-  "overall_risk": "HIGH",
-  "security_score": 70,
-  "quality_score": 65,
-  "composite_risk_score": 32,
-  "total_findings": 5,
-  "markdown_review": "## 🤖 AI Code Review Report\\n...",
+  "overall_risk": "<string: CRITICAL, HIGH, MEDIUM, LOW, or CLEAN>",
+  "security_score": "<integer: 0-100>",
+  "quality_score": "<integer: 0-100>",
+  "composite_risk_score": "<integer: 0-100>",
+  "total_findings": "<integer: total number of issues found>",
+  "markdown_review": "<string: detailed markdown formatted review report>",
   "remediation_priority_list": [
-    "Fix SQL injection in get_user() (line 12) — CRITICAL",
-    "Remove hardcoded API key (line 5) — HIGH"
+    "<string: A one-sentence summary of the finding and its line number, ending with the severity>"
+    // IMPORTANT: If there are no findings, output an empty list [] instead.
   ],
   "approved": false
 }}
@@ -75,13 +75,25 @@ Remediation Summary:
 
 
 def _extract_json(text: str) -> dict:
-    """Strips markdown fences and extracts the first JSON object from LLM output."""
+    """Strips markdown fences and extracts the first JSON object using brace matching."""
     text = re.sub(r"```(?:json)?\n?", "", text).strip()
     text = text.replace("```", "").strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-    raise ValueError(f"No JSON found in LLM output: {text[:300]}")
+    
+    start = text.find('{')
+    if start == -1:
+        raise ValueError(f"No JSON found in LLM output: {text[:300]}")
+        
+    count = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            count += 1
+        elif text[i] == '}':
+            count -= 1
+            
+        if count == 0:
+            return json.loads(text[start:i+1])
+            
+    raise ValueError(f"Invalid JSON format, mismatched braces in LLM output: {text[:300]}")
 
 
 def _compute_fallback_scores(state: AgentState) -> dict:

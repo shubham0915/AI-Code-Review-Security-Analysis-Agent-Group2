@@ -45,8 +45,8 @@ class Settings(BaseSettings):
 
     # Groq (LPUs)
     groq_api_key: str = ""
-    groq_primary_model: str = "llama-3.3-70b-versatile"
-    groq_fast_model: str = "llama-3.1-8b-instant"
+    groq_primary_model: str = "openai/gpt-oss-120b"
+    groq_fast_model: str = "qwen/qwen3.6-27b"
 
     # ChromaDB
     chroma_persist_dir: str = "./data/chroma_db"

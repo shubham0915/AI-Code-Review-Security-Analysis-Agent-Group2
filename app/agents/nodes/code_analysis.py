@@ -13,14 +13,14 @@ from app.llm import get_llm, get_fast_llm
 from app.models import CodeAnalysisResult
 from app.agents.state import AgentState
 from app.tracing import traceable
-from app.linters import run_python_linters, run_java_linters
+from app.linters import run_python_linters
 
 PROMPT = """You are an expert Senior Software Engineer performing a code review.
 Your task is to analyze the provided source code ONLY for code smells, design anti-patterns, complexity issues, convention violations (like missing docstrings), and poor coding practices.
 Do NOT report security vulnerabilities (like SQL injection or SSRF) — another agent handles security.
 
 You have been provided with the raw source code and the output of objective static analysis tools.
-Use the static analysis output (especially Pylint convention and warning messages) to guide your review. You MUST include any missing docstrings, bad naming conventions, or unused imports found by the linters in your findings.
+Use the static analysis output (especially Pylint convention and warning messages) to guide your review. You MUST ONLY include findings that are explicitly reported by the linters or clearly visible in the source code.
 
 Provide a severity score, and grade the overall code quality.
 
@@ -30,20 +30,21 @@ Use exactly this structure:
   "agent": "CodeAnalysisAgent",
   "findings": [
     {{
-      "id": "finding-001",
-      "type": "code_smell",
-      "category": "maintainability",
-      "severity": "medium",
-      "line_start": 3,
-      "line_end": 5,
-      "description": "Function is missing a docstring explaining its purpose.",
-      "suggestion": "Add a descriptive docstring."
+      "id": "<string: unique finding identifier>",
+      "type": "<string: code_smell or convention>",
+      "category": "<string: maintainability, readability, etc>",
+      "severity": "<string: critical, high, medium, low, informational>",
+      "line_start": "<integer>",
+      "line_end": "<integer>",
+      "description": "<string: explanation of the issue>",
+      "suggestion": "<string: how to fix it>"
     }}
+    // IMPORTANT: If there are no findings, output an empty list [] instead.
   ],
-  "complexity_score": {{"cyclomatic": 2, "cognitive": 3, "lines_of_code": 6, "duplication_pct": 0.0}},
-  "quality_grade": "C",
-  "quality_score": 55,
-  "summary": "Overall summary of code quality."
+  "complexity_score": {{"cyclomatic": "<integer>", "cognitive": "<integer>", "lines_of_code": "<integer>", "duplication_pct": "<float>"}},
+  "quality_grade": "<string: A, B, C, D, or F>",
+  "quality_score": "<integer: 0-100>",
+  "summary": "<string: 2-3 sentence summary of code quality>"
 }}
 
 IMPORTANT: severity must be one of: critical, high, medium, low, informational (all lowercase).
@@ -60,15 +61,25 @@ Source Code ({language}):
 """
 
 def _extract_json(text: str) -> dict:
-    """Strips markdown fences and extracts the first JSON object from LLM output."""
-    # Remove ```json ... ``` or ``` ... ``` fences
+    """Strips markdown fences and extracts the first JSON object using brace matching."""
     text = re.sub(r"```(?:json)?\n?", "", text).strip()
     text = text.replace("```", "").strip()
-    # Find the first { ... } block
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-    raise ValueError(f"No JSON found in LLM output: {text[:300]}")
+    
+    start = text.find('{')
+    if start == -1:
+        raise ValueError(f"No JSON found in LLM output: {text[:300]}")
+        
+    count = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            count += 1
+        elif text[i] == '}':
+            count -= 1
+            
+        if count == 0:
+            return json.loads(text[start:i+1])
+            
+    raise ValueError(f"Invalid JSON format, mismatched braces in LLM output: {text[:300]}")
 
 @traceable(
     name="CodeAnalysisAgent",

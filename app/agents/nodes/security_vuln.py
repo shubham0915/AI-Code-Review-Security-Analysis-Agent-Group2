@@ -28,29 +28,33 @@ Use exactly this structure: # [filename](file:///path/to/file#L20)
   "agent": "SecurityVulnerabilityAgent",
   "vulnerabilities": [
     {{
-      "id": "vuln-001",
-      "title": "SQL Injection via string concatenation",
-      "owasp_category": "A03:2021 - Injection",
-      "cwe_id": "CWE-89",
-      "severity": "critical",
-      "description": "...",
-      "impact": "...",
-      "line": 12,
-      "evidence": "String sql = \\"SELECT * FROM profile WHERE user_id = '\\" + userId + \\"'\\";",
-      "remediation": "Use parameterized PreparedStatement queries."
+      "id": "<string: unique vulnerability identifier>",
+      "title": "<string: short title>",
+      "owasp_category": "<string: OWASP top 10 category>",
+      "cwe_id": "<string: CWE identifier>",
+      "severity": "<string: critical, high, medium, low>",
+      "description": "<string: detailed explanation>",
+      "impact": "<string: potential consequences>",
+      "line": "<integer: line number where vulnerability is found>",
+      "evidence": "<string: snippet of the vulnerable code>",
+      "remediation": "<string: how to fix the issue>"
     }}
+    // IMPORTANT: If there are no vulnerabilities found, output an empty list [] instead.
   ],
-  "security_score": 40,
-  "critical_count": 1,
-  "high_count": 0,
-  "medium_count": 0,
-  "low_count": 0,
-  "summary": "One critical SQL injection risk detected."
+  "security_score": "<integer: 0-100, where 100 is perfectly secure>",
+  "critical_count": "<integer: number of critical vulns>",
+  "high_count": "<integer>",
+  "medium_count": "<integer>",
+  "low_count": "<integer>",
+  "summary": "<string: 2-3 sentence summary of the security posture>"
 }}
 
 IMPORTANT: "severity" must be one of: "critical", "high", "medium", "low".
 IMPORTANT: "owasp_category" must be a valid OWASP Top 10 2021 category.
 CRITICAL: Include "security_score" (0-100), and all *_count fields.
+CRITICAL FALSE-POSITIVE PREVENTION: 
+1. DO NOT flag "Missing Input Validation" or "Missing Sanitization" unless the code snippet clearly accepts external user input (e.g., HTTP request parameters, database queries, CLI arguments). If it is a simple algorithm or internal loop, assume inputs are trusted.
+2. DO NOT flag missing docstrings or minor style issues here; those are handled by the Code Quality Agent. Only report actual security risks.
 
 OWASP Security Guidelines (RAG Context):
 {rag_context}
@@ -66,14 +70,25 @@ Source Code ({language}):
 
 
 def _extract_json(text: str) -> dict:
-    """
-    Extracts and parses raw JSON objects from LLM markdown response strings, stripping unwanted markdown code fences.
-    """
-    text = re.sub(r"```(?:json)?\n?", "", text).strip().replace("```", "").strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-    raise ValueError(f"No JSON found in output: {text[:300]}")
+    """Strips markdown fences and extracts the first JSON object using brace matching."""
+    text = re.sub(r"```(?:json)?\n?", "", text).strip()
+    text = text.replace("```", "").strip()
+    
+    start = text.find('{')
+    if start == -1:
+        raise ValueError(f"No JSON found in LLM output: {text[:300]}")
+        
+    count = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            count += 1
+        elif text[i] == '}':
+            count -= 1
+            
+        if count == 0:
+            return json.loads(text[start:i+1])
+            
+    raise ValueError(f"Invalid JSON format, mismatched braces in LLM output: {text[:300]}")
 
 
 def _extract_static_fallbacks(linter_output: dict) -> list[SecurityVulnerability]:

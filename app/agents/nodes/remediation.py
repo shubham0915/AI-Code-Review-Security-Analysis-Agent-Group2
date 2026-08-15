@@ -25,15 +25,16 @@ Use exactly this structure:
   "agent": "RemediationAgent",
   "remediations": [
     {{
-      "finding_id": "finding-001",
-      "recommendation": "One-line action to fix the issue.",
-      "corrected_code": "def safe_query(uid):\\n    cursor.execute('SELECT * FROM users WHERE id = %s', (uid,))",
-      "explanation": "Parameterized queries separate SQL code from user data.",
-      "references": ["OWASP A03:2021 - Injection", "CWE-89 SQL Injection"],
-      "effort": "low"
+      "finding_id": "<string: MUST match the id from the findings list>",
+      "recommendation": "<string: one-line action to fix the issue>",
+      "corrected_code": "<string: rewritten code snippet, or null if no code change needed>",
+      "explanation": "<string: why this fixes the issue>",
+      "references": ["<string: OWASP or CWE reference>"],
+      "effort": "<string: low, medium, high>"
     }}
+    // IMPORTANT: If there are no findings to remediate, output an empty list [] instead.
   ],
-  "summary": "Brief overall summary of all remediations."
+  "summary": "<string: Brief overall summary of all remediations>"
 }}
 
 IMPORTANT: "finding_id" must exactly match the "id" field from the findings list.
@@ -55,14 +56,25 @@ Findings to Remediate:
 
 
 def _extract_json(text: str) -> dict:
-    """
-    Extracts and parses raw JSON objects from LLM markdown response strings, stripping unwanted markdown code fences.
-    """
-    text = re.sub(r"```(?:json)?\n?", "", text).strip().replace("```", "").strip()
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-    raise ValueError(f"No JSON found in output: {text[:300]}")
+    """Strips markdown fences and extracts the first JSON object using brace matching."""
+    text = re.sub(r"```(?:json)?\n?", "", text).strip()
+    text = text.replace("```", "").strip()
+    
+    start = text.find('{')
+    if start == -1:
+        raise ValueError(f"No JSON found in LLM output: {text[:300]}")
+        
+    count = 0
+    for i in range(start, len(text)):
+        if text[i] == '{':
+            count += 1
+        elif text[i] == '}':
+            count -= 1
+            
+        if count == 0:
+            return json.loads(text[start:i+1])
+            
+    raise ValueError(f"Invalid JSON format, mismatched braces in LLM output: {text[:300]}")
 
 
 def _collect_findings(state: AgentState) -> list:
