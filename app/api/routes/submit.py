@@ -89,7 +89,8 @@ async def _create_session(
 )
 async def submit_code_paste(request: CodeSubmissionRequest) -> SubmissionResponse:
     """
-    Receives code via JSON payload, validates syntax and intent, and queues an asynchronous analysis task.
+    Receives code via JSON payload, validates syntax and intent, 
+    and queues an asynchronous analysis task.
     Returns the session_id to poll for results.
     """
     language = request.language
@@ -119,7 +120,8 @@ async def submit_code_paste(request: CodeSubmissionRequest) -> SubmissionRespons
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
-                "message": "Intent validation failed. The input does not appear to be valid source code.",
+                "message": "Intent validation failed. "
+                           "The input does not appear to be valid source code.",
                 "reason": intent_reason
             },
         )
@@ -132,7 +134,7 @@ async def submit_code_paste(request: CodeSubmissionRequest) -> SubmissionRespons
 
         cached = json.loads(cached_session)
         cached_sid = cached["session_id"]
-        
+
         # Verify the cached result actually has real pipeline output (not a placeholder)
         cached_result_raw = await redis.get(f"result:{cached_sid}")
         if cached_result_raw:

@@ -3,7 +3,7 @@ About this file: embeddings.py
 Structure: Model connection wrapper implementing proactive probing, backoff retries, and offline HuggingFace embedding fallback.
 Methods used: get_embedding_model, _test_embedding.
 """
-
+# pylint: disable=invalid-name, global-statement, import-outside-toplevel, broad-exception-caught
 import time
 from loguru import logger
 from app.config import get_settings
@@ -121,9 +121,10 @@ def _embed_batch(batch: list[str]) -> list[list[float]]:
                     f"(attempt {attempt + 1}/4)."
                 )
                 time.sleep(wait)
-            else:
-                logger.error(f"[EMBEDDINGS] embed_batch failed: {e}")
-                raise
+                continue
+            
+            logger.error(f"[EMBEDDINGS] embed_batch failed: {e}")
+            raise
     raise RuntimeError("[EMBEDDINGS] Rate limit persisted after 4 attempts.")
 
 

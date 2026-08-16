@@ -1,9 +1,10 @@
 """
 About this file: retriever.py
-Structure: Vector similarity query wrappers formatting top-K matching OWASP reference snippets for agent prompts.
+Structure: Vector similarity query wrappers formatting top-K matching OWASP reference snippets 
+           for agent prompts.
 Methods used: retrieve_rag_context.
 """
-
+# pylint: disable=invalid-name, global-statement, broad-exception-caught
 from loguru import logger
 from app.services.rag.index import build_or_load_index
 

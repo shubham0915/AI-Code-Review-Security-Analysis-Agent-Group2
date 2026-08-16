@@ -78,21 +78,21 @@ def _extract_json(text: str) -> dict:
     """Strips markdown fences and extracts the first JSON object using brace matching."""
     text = re.sub(r"```(?:json)?\n?", "", text).strip()
     text = text.replace("```", "").strip()
-    
+
     start = text.find('{')
     if start == -1:
         raise ValueError(f"No JSON found in LLM output: {text[:300]}")
-        
+
     count = 0
     for i in range(start, len(text)):
         if text[i] == '{':
             count += 1
         elif text[i] == '}':
             count -= 1
-            
+
         if count == 0:
             return json.loads(text[start:i+1])
-            
+
     raise ValueError(f"Invalid JSON format, mismatched braces in LLM output: {text[:300]}")
 
 
@@ -159,7 +159,7 @@ async def run_pr_summary(state: AgentState) -> dict:
         dict with key "pr_summary_result" containing a PRSummaryResult object.
     """
     logger.info(f"Running PR Summary Agent for session {state.get('session_id')}")
-    print(f"[PR_SUMMARY] Starting...", flush=True)
+    print("[PR_SUMMARY] Starting...", flush=True)
 
     # ── Serialize prior agent results for the prompt ──────────────────────────
     code_result = state.get("code_analysis_result")
@@ -172,7 +172,7 @@ async def run_pr_summary(state: AgentState) -> dict:
             return "No data available."
         try:
             return json.dumps(model.model_dump(), indent=2)
-        except Exception:
+        except Exception:  # pylint: disable=broad-exception-caught
             return str(model)
 
     invoke_kwargs = {
@@ -207,7 +207,7 @@ async def run_pr_summary(state: AgentState) -> dict:
             )
             return {"pr_summary_result": result}
 
-        except (ValueError, json.JSONDecodeError, Exception) as e:
+        except (ValueError, json.JSONDecodeError, Exception) as e:  # pylint: disable=broad-exception-caught
             last_error = e
             if attempt == 0:
                 logger.warning(f"[PR_SUMMARY] Parse failed attempt 1: {e}")
@@ -221,7 +221,9 @@ async def run_pr_summary(state: AgentState) -> dict:
             else:
                 logger.error(f"[PR_SUMMARY] Parse failed attempt 2: {e}")
 
-    logger.warning(f"[PR_SUMMARY] Using deterministic fallback for session {state.get('session_id')}")
+    logger.warning(
+        f"[PR_SUMMARY] Using deterministic fallback for session {state.get('session_id')}"
+    )
 
     fallback = _compute_fallback_scores(state)
     return {

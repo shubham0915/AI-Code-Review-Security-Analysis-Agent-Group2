@@ -9,7 +9,7 @@ import re
 import logfire
 from loguru import logger
 from langchain_core.prompts import ChatPromptTemplate
-from app.llm import get_llm, get_fast_llm
+from app.llm import get_llm
 from app.models import CodeAnalysisResult
 from app.agents.state import AgentState
 from app.tracing import traceable
@@ -106,7 +106,7 @@ async def run_code_analysis(state: AgentState) -> dict:
             linter_out = {**linter_out, **quality_results}
         # Java quality linting: Semgrep handles Java in security_vuln; skip here
         logger.info(f"[CODE_ANALYSIS] Quality linters complete — language={language}")
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.warning(f"[CODE_ANALYSIS] Quality linter error (non-fatal): {e}")
 
     llm = get_llm()
@@ -131,30 +131,30 @@ async def run_code_analysis(state: AgentState) -> dict:
             # Handle structured responses (Pydantic model returned by mock or structured LLM)
             if isinstance(raw_response, CodeAnalysisResult):
                 return {"code_analysis_result": raw_response}
-            elif isinstance(raw_response, dict):
+            if isinstance(raw_response, dict):
                 return {"code_analysis_result": CodeAnalysisResult(**raw_response)}
-            else:
-                raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
-                data = _extract_json(raw_text)
-                result = CodeAnalysisResult(**data)
-                # Inject Radon complexity metrics if available
-                if "radon" in linter_out and isinstance(linter_out["radon"], dict):
-                    radon = linter_out["radon"]
-                    max_cc = max(
-                        (b.get("complexity", 0)
-                         for blocks in radon.get("cc", {}).values() if isinstance(blocks, list)
-                         for b in blocks if isinstance(b, dict)),
-                        default=0,
-                    )
-                    result.complexity_score.cyclomatic = max_cc
-                    result.complexity_score.lines_of_code = sum(
-                        s.get("loc", 0)
-                        for s in radon.get("raw", {}).values() if isinstance(s, dict)
-                    )
-                logger.info(f"[CODE_ANALYSIS] OK (attempt {attempt + 1}). quality_score={result.quality_score}")
-                return {"code_analysis_result": result, "linter_output": linter_out}
+            
+            raw_text = raw_response.content if hasattr(raw_response, "content") else str(raw_response)
+            data = _extract_json(raw_text)
+            result = CodeAnalysisResult(**data)
+            # Inject Radon complexity metrics if available
+            if "radon" in linter_out and isinstance(linter_out["radon"], dict):
+                radon = linter_out["radon"]
+                max_cc = max(
+                    (b.get("complexity", 0)
+                     for blocks in radon.get("cc", {}).values() if isinstance(blocks, list)
+                     for b in blocks if isinstance(b, dict)),
+                    default=0,
+                )
+                result.complexity_score.cyclomatic = max_cc
+                result.complexity_score.lines_of_code = sum(
+                    s.get("loc", 0)
+                    for s in radon.get("raw", {}).values() if isinstance(s, dict)
+                )
+            logger.info(f"[CODE_ANALYSIS] OK (attempt {attempt + 1}). quality_score={result.quality_score}")
+            return {"code_analysis_result": result, "linter_output": linter_out}
 
-        except (ValueError, json.JSONDecodeError, Exception) as e:
+        except (ValueError, json.JSONDecodeError, Exception) as e:  # pylint: disable=broad-exception-caught
             last_error = e
             if attempt == 0:
                 logger.warning(f"[CODE_ANALYSIS] Parse failed attempt 1: {e}")

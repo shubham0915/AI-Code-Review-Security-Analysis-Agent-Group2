@@ -3,7 +3,7 @@ About this file: index.py
 Structure: Storage context initialization and document loading workflows handling disk caching and re-indexing.
 Methods used: load_or_create_index.
 """
-
+# pylint: disable=import-outside-toplevel, broad-exception-caught
 import os
 from pathlib import Path
 from loguru import logger
