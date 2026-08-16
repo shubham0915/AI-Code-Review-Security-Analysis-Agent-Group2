@@ -119,12 +119,19 @@ async def run_python_linters(code: str) -> Dict[str, Any]:
 
     try:
         # Run all three tools at the same time to minimize total wait time
-        bandit_res, pylint_res, radon_res = await asyncio.gather(
+        bandit_res, pylint_res, radon_res, semgrep_res = await asyncio.gather(
             run_bandit(temp_path),
             run_pylint(temp_path),
             run_radon(temp_path),
+            _run_semgrep(code, ".py", ["p/python", "p/secrets"]),
         )
-        return {"bandit": bandit_res, "pylint": pylint_res, "radon": radon_res}
+        return {
+            "bandit": bandit_res, 
+            "pylint": pylint_res, 
+            "radon": radon_res, 
+            "semgrep": semgrep_res.get("semgrep", {}),
+            "heuristics": semgrep_res.get("heuristics", [])
+        }
     finally:
         # Always delete the temp file — even if a tool crashes with an exception
         if os.path.exists(temp_path):
@@ -203,44 +210,25 @@ def _parse_semgrep_results(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     return findings
 
 
-async def run_semgrep_java(code: str) -> Dict[str, Any]:
+async def _run_semgrep(code: str, suffix: str, configs: List[str]) -> Dict[str, Any]:
     """
-    Run Semgrep against Java source code using the official OWASP Java security rulepack.
-
-    Semgrep uses structural AST pattern matching, taint-flow analysis, and a curated
-    library of thousands of community-verified security rules — far superior to raw
-    regex heuristics. It detects:
-      - SQL Injection (CWE-89) via taint flow from user input to executeQuery/execute
-      - Path Traversal (CWE-22) via File/Paths construction from tainted sources
-      - Command Injection (CWE-78) via Runtime.exec / ProcessBuilder with tainted args
-      - Unsafe Deserialization (CWE-502) via ObjectInputStream.readObject()
-      - Insecure Cryptography (CWE-327) — ECB/DES cipher modes, MD5/SHA-1 hashing
-      - XXE Injection (CWE-611) — unprotected DocumentBuilderFactory usage
-      - SSRF (CWE-918) — URL construction from user-controlled parameters
-      - Hardcoded secrets (CWE-798) — passwords and keys baked into source literals
-
-    Args:
-        code: Raw Java source code string.
-
-    Returns:
-        A dict with keys:
-          - "heuristics": list of normalized finding dicts (compatible with fallback processor)
-          - "semgrep":    raw Semgrep metadata (rules count, errors, engine version)
+    Run Semgrep against source code using the specified rulepacks.
     """
-    # Semgrep requires a real .java file with the correct extension for language detection
-    with tempfile.NamedTemporaryFile(suffix=".java", delete=False, mode="w", encoding="utf-8") as tmp:
+    semgrep_bin = _get_tool_path("semgrep")
+    if not os.path.exists(semgrep_bin):
+        return {
+            "heuristics": [],
+            "semgrep": {
+                "error": "Semgrep binary not found in .venv/bin/. Install it with: pip install semgrep"
+            },
+        }
+
+    # Semgrep requires a real file with the correct extension for language detection
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False, mode="w", encoding="utf-8") as tmp:
         tmp.write(code)
         tmp_path = tmp.name
 
     try:
-        semgrep_bin = _get_tool_path("semgrep")
-
-        # Build the semgrep command
-        # --config: which rulepack(s) to use
-        # --json: machine-readable output
-        # --quiet: suppress progress bar and banner
-        # --no-git-ignore: analyse temp files not tracked by git
-        # --timeout 30: prevent runaway analysis on pathological code
         cmd = [
             semgrep_bin,
             "--json",
@@ -248,7 +236,7 @@ async def run_semgrep_java(code: str) -> Dict[str, Any]:
             "--no-git-ignore",
             "--timeout", "30",
         ]
-        for config in _SEMGREP_JAVA_CONFIGS:
+        for config in configs:
             cmd.extend(["--config", config])
         cmd.append(tmp_path)
 
@@ -280,7 +268,7 @@ async def run_semgrep_java(code: str) -> Dict[str, Any]:
             "heuristics": findings,
             "semgrep": {
                 "engine":       "Semgrep OSS",
-                "configs":      _SEMGREP_JAVA_CONFIGS,
+                "configs":      configs,
                 "rules_matched": len(findings),
                 "errors":       raw.get("errors", []),
             },
@@ -317,17 +305,4 @@ async def run_java_linters(code: str) -> dict:
     Returns:
         A dict with keys "heuristics" and "semgrep" (see run_semgrep_java for details).
     """
-    semgrep_bin = _get_tool_path("semgrep")
-
-    if not os.path.exists(semgrep_bin):
-        return {
-            "heuristics": [],
-            "semgrep": {
-                "error": (
-                    "Semgrep binary not found in .venv/bin/. "
-                    "Install it with: uv pip install semgrep"
-                )
-            },
-        }
-
-    return await run_semgrep_java(code)
+    return await _run_semgrep(code, ".java", _SEMGREP_JAVA_CONFIGS)
