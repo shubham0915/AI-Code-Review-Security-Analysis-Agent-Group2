@@ -187,7 +187,7 @@ Export as JSON / Markdown / PDF
 ┌─────────────────────────────────────────────────────────────────┐
 │                    WHAT YOU INTERACT WITH                       │
 │                                                                 │
-│   Browser → Streamlit UI (http://localhost:8501)                │
+│   Browser → React Dashboard (http://localhost:5173)             │
 │             ┌─────────────┬──────────────┬───────────────┐      │
 │             │ Paste Code  │ Upload File  │  Chat / Q&A   │      │
 │             └─────────────┴──────────────┴───────────────┘      │
@@ -210,9 +210,9 @@ Export as JSON / Markdown / PDF
 ┌─────────────────────────────────────────────────────────────────┐
 │                    WHERE KNOWLEDGE COMES FROM                   │
 │                                                                 │
-│   Groq LPUs (LLM)    ChromaDB (Vector Store)    Redis (Cache)   │
-│   llama3-70b-8192    OWASP Top-10              Query results    │
-│   llama3-8b-8192     CERT Standards            Session state    │
+│   Groq/Gemini (LLM)  ChromaDB (Vector Store)    Redis (Cache)   │
+│   llama3/gemini      OWASP Top-10              Query results    │
+│   Ollama Fallbacks   CERT Standards            Session state    │
 │                      CWE Top-25                Embeddings       │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -225,7 +225,7 @@ Export as JSON / Markdown / PDF
 
 ```mermaid
 graph TB
-    subgraph UI["🖥️ Frontend — Streamlit"]
+    subgraph UI["🖥️ Frontend — React Dashboard"]
         A1["📋 Code Paste\n(Monaco Editor)"]
         A2["📁 File Upload\n(.py / .java)"]
         A3["💬 Chat Interface"]
@@ -252,12 +252,12 @@ graph TB
         D1["🔍 Code Analysis Agent\ncode smells · complexity · design"]
         D2["🛡️ Security Vuln Agent\nOWASP Top-10 · CWE · CVSS"]
         D3["🔧 Remediation Agent\ncorrected code · fix guidance"]
-        D4["📝 PR Summary Agent\nmarkdown review · risk score"]
+        D4["📝 PR Summary Agent\nmarkdown review · risk score · block signal"]
         D5["💬 Conversational Assistant\nRAG-powered Q&A"]
     end
 
     subgraph INFRA["🗄️ Infrastructure"]
-        E1["⚡ Groq LPUs\nllama3-70b-8192\nllama3-8b-8192\n(Fallback: Gemini/Ollama)"]
+        E1["⚡ LLM Providers\nGemini / Groq LPUs\n(Fallback: Local Ollama)"]
         E2["🗃️ ChromaDB\nowasp_knowledge_base\ncode_patterns\nremediation_guides"]
         E3["⚡ Redis\nsessions · cache · queue"]
         E4["📊 Logfire & Prometheus\nDistributed Tracing"]
@@ -265,7 +265,7 @@ graph TB
 
     subgraph LINTERS["🔬 Static Analysis"]
         F1["🐍 Python\nBandit · Pylint · Radon · Semgrep"]
-        F2["☕ Java\nPMD · SpotBugs"]
+        F2["☕ Java\nSemgrep"]
     end
 
     A1 & A2 --> B1 & B2
@@ -294,10 +294,11 @@ graph TB
 ```mermaid
 sequenceDiagram
     actor Dev as 👨‍💻 Developer
-    participant UI as Streamlit UI
+    participant UI as React UI
     participant API as FastAPI Backend
+    participant Lang as Magika Detector
     participant Val as Code Validator
-    participant Lang as Language Detector
+    participant Guard as Intent Gatekeeper
     participant Redis as Redis Cache
     participant Cel as Celery Worker
 
@@ -305,12 +306,12 @@ sequenceDiagram
     UI->>API: POST /api/v1/submit/paste or /file
 
     API->>Lang: detect_language(code, filename)
-    Note over Lang: 1. Check file extension (.py/.java)<br/>2. Pygments lexer guess<br/>3. Keyword heuristics<br/>4. Default: Python
+    Note over Lang: 1. Magika ML prediction<br/>2. Extension fallback<br/>3. Keyword heuristics<br/>4. Default: Python
 
     Lang-->>API: Language = python | java
 
     API->>Val: validate_code(code, language)
-    Note over Val: Python: ast.parse() — standard library<br/>Java: brace balance + class check
+    Note over Val: Python: ast.parse()<br/>Java: javalang parse
 
     alt Syntax Error
         Val-->>API: valid=False, errors=[...]
@@ -318,30 +319,39 @@ sequenceDiagram
         UI-->>Dev: ❌ Show syntax error message
     else Valid Code
         Val-->>API: valid=True
-        API->>Redis: GET cache:{sha256(code+lang)}
-        alt Cache Hit (same code submitted before)
-            Redis-->>API: cached session_id
-            API-->>UI: HTTP 202 + existing session_id
-        else Cache Miss (new submission)
-            API->>Redis: SET session:{uuid} → {code, status:"queued", ...}
-            API->>Cel: run_full_analysis.delay(session_id)
-            API-->>UI: HTTP 202 + {session_id, estimated_seconds}
-        end
-        UI-->>Dev: ✅ Session created, shows session ID
-        loop Poll every 3 seconds
-            UI->>API: GET /api/v1/status/{session_id}
-            API->>Redis: GET session:{session_id}
-            Redis-->>API: {status, progress_pct, current_stage}
-            API-->>UI: Status response
+        
+        API->>Guard: validate_intent(code)
+        alt Invalid Intent (Prompt Injection)
+            Guard-->>API: valid=False
+            API-->>UI: HTTP 422 (Not source code)
+            UI-->>Dev: ❌ Reject prompt spam
+        else Valid Intent
+            Guard-->>API: valid=True
+            API->>Redis: GET cache:{sha256(code+lang)}
+            alt Cache Hit (same code submitted before)
+                Redis-->>API: cached session_id
+                API-->>UI: HTTP 202 + existing session_id
+            else Cache Miss (new submission)
+                API->>Redis: SET session:{uuid} → {code, status:"queued", ...}
+                API->>Cel: run_full_analysis.delay(session_id)
+                API-->>UI: HTTP 202 + {session_id, estimated_seconds}
+            end
+            UI-->>Dev: ✅ Session created, shows session ID
+            loop Poll every 3 seconds
+                UI->>API: GET /api/v1/status/{session_id}
+                API->>Redis: GET session:{session_id}
+                Redis-->>API: {status, progress_pct, current_stage}
+                API-->>UI: Status response
+            end
         end
     end
 ```
 
 ---
 
-### 3. Multi-Agent Pipeline *(Milestone 3 — ✅ Implemented with Parallel Fan-Out)*
+### 3. Multi-Agent Pipeline *(Milestone 3 — ✅ Implemented)*
 
-> Shows how the five agents work together once triggered by Celery.
+> Shows how the four agents work together once triggered by Celery.
 
 ```mermaid
 flowchart TD
@@ -349,28 +359,33 @@ flowchart TD
 
     subgraph PRE["📥 Stage 0 — Preprocessing"]
         P1["Load code from Redis"]
-        P2["Run static linters\n(Bandit / PMD / Pylint / Semgrep)"]
-        P3["Parse AST / CFG"]
-        P1 --> P2 --> P3
+        P2["Parse AST / Language Setup"]
+        P1 --> P2
     end
 
-    subgraph PARALLEL["⚡ Stage 1 — Parallel Agents"]
-        direction LR
-        AG1["🔍 Code Analysis Agent\n────────────────\n• God class detection\n• Long method check\n• Cyclomatic complexity\n• Design anti-patterns\n• PEP8 / style issues\n────────────────\nModel: llama3-8b-8192"]
-        AG2["🛡️ Security Vuln Agent\n────────────────\n• SQL Injection (A03)\n• XSS / CSRF (A03)\n• Hardcoded secrets (A02)\n• Broken auth (A07)\n• SSRF (A10)\n• + 5 more OWASP cats\n────────────────\nModel: llama3-70b-8192\n+ RAG from ChromaDB"]
+    subgraph AGENT_CHAIN["🔗 Stage 1 — Sequential Agent Chain"]
+        direction TB
+        AG1["🔍 Code Analysis Agent\n────────────────\n• Runs Pylint & Radon\n• Analyzes code smells\n• PEP8 / complexity"]
+        AG2["🛡️ Security Vuln Agent\n────────────────\n• Runs Bandit & Semgrep\n• RAG-assisted OWASP check\n• Detects hardcoded secrets"]
+        SYNC["🔄 Sync Findings\n(Convergence Point)"]
+        
+        AG1 --> AG2 --> SYNC
     end
 
-    subgraph SEQ["🔗 Stage 2 — Sequential Agents"]
-        AG3["🔧 Remediation Agent\n────────────────\n• Fix for every finding\n• Corrected code diff\n• Effort estimate\n• OWASP references\n────────────────\nModel: llama3-70b-8192\n+ RAG from ChromaDB"]
-        AG4["📝 PR Summary Agent\n────────────────\n• Risk score (0-100)\n• Severity table\n• Remediation roadmap\n• Approve / Block signal\n────────────────\nModel: llama3-8b-8192"]
+    subgraph FINAL["📝 Stage 2 — Remediation & Synthesis"]
+        direction TB
+        AG3["🔧 Remediation Agent\n────────────────\n• Formulates concrete code fixes\n• Dropped if 0 findings"]
+        AG4["📝 PR Summary Agent\n────────────────\n• Generates Markdown Scorecard\n• Triggers UI APPROVED/BLOCKED"]
+        
+        AG3 --> AG4
     end
 
     RESULT(["💾 Store Result\nin Redis + return to UI"])
 
     START --> PRE
-    PRE --> AG1 & AG2
-    AG1 & AG2 --> AG3
-    AG3 --> AG4
+    PRE --> AG1
+    SYNC -->|"If findings > 0"| AG3
+    SYNC -->|"If 0 findings"| AG4
     AG4 --> RESULT
 ```
 
@@ -384,30 +399,25 @@ flowchart TD
 flowchart LR
     subgraph KB_BUILD["📚 Knowledge Base Construction (One-Time Setup)"]
         direction TB
-        SRC["Raw Documents\n────────────\n• OWASP Top-10 HTML\n• OWASP ASVS 4.0 PDF\n• OWASP Cheat Sheets (60+)\n• CWE Top-25\n• CERT Standards (Java/Python)\n• Semgrep rule docs"]
-        CHUNK["Chunking\n────────────\nRecursiveCharacterTextSplitter\nchunk_size = 512 tokens\noverlap = 64 tokens\nSection-boundary aware"]
-        EMBED["Embedding\n────────────\nnomic-embed-text\n768-dimensional vectors\nApple MPS accelerated"]
-        STORE["ChromaDB\nPersistent Storage\n────────────\nowasp_knowledge_base\n~15,000 chunks\ncode_patterns ~5,000\nremediation_guides ~8,000"]
+        SRC["Raw Documents\n────────────\n• OWASP Top-10 HTML\n• OWASP ASVS 4.0 PDF\n• OWASP Cheat Sheets (60+)\n• CWE Top-25\n• CERT Standards (Java/Python)"]
+        CHUNK["Chunking\n────────────\nRecursiveCharacterTextSplitter\nchunk_size = 512 tokens\noverlap = 64 tokens"]
+        EMBED["Embedding\n────────────\nmodels/text-embedding-004\n(Fallback: nomic-embed-text)"]
+        STORE["ChromaDB\nPersistent Storage\n────────────\nowasp_knowledge_base\n~15,000 chunks"]
         SRC --> CHUNK --> EMBED --> STORE
     end
 
     subgraph RAG_QUERY["🔍 Query Time (Real-Time)"]
         direction TB
         Q["User Query or\nAgent Context"]
-        QE["Query Embedding\nnomic-embed-text"]
-        DENSE["Dense Search\nChromaDB cosine similarity\nTop-20 candidates"]
-        SPARSE["Sparse Search\nBM25 keyword index\nTop-20 candidates"]
-        RRF["Reciprocal Rank Fusion\nMerge + deduplicate\nTop-30 unified"]
-        RERANK["Cross-Encoder Reranker\nms-marco-MiniLM-L-6-v2\nTop-5 final context"]
+        QE["Query Embedding"]
+        DENSE["Dense Search\nChromaDB cosine similarity\nTop-K retrieval"]
         PROMPT["Prompt Assembly\nSystem + KB chunks + Query"]
-        LLM["Ollama LLM\ncodestral / qwen2.5-coder"]
+        LLM["LLM Engine\nGemini / Groq / Ollama"]
         ANS["Answer + Source Citations"]
 
         Q --> QE
-        QE --> DENSE & SPARSE
-        DENSE & SPARSE --> RRF
-        RRF --> RERANK
-        RERANK --> PROMPT
+        QE --> DENSE
+        DENSE --> PROMPT
         PROMPT --> LLM
         LLM --> ANS
     end
@@ -422,7 +432,7 @@ flowchart LR
 ```mermaid
 flowchart TD
     subgraph CLIENT["Client Layer"]
-        C1["Streamlit Browser\nlocalhost:8501"]
+        C1["React Dashboard\nlocalhost:5173"]
     end
 
     subgraph FASTAPI["FastAPI Process\nlocalhost:8000"]
@@ -610,8 +620,8 @@ This section describes **exactly what code exists today**, what it does, and whi
 ```mermaid
 graph TB
     subgraph PRESENTATION["🖥️ Presentation Layer"]
-        ST["Streamlit 1.36\nPython web UI framework\nComponent: Developer Portal\nFile: frontend/app.py"]
-        SA["streamlit-ace\nMonaco-like code editor\nin browser"]
+        RE["React 18 + Vite\nComponent: Developer Dashboard\nFile: frontend-react/"]
+        TW["TailwindCSS + Lucide\nUI Styling & Icons"]
     end
 
     subgraph API_LAYER["⚙️ API Layer"]
@@ -631,25 +641,21 @@ graph TB
     end
 
     subgraph RAG_LAYER["📚 RAG Layer (Milestone 2)"]
-        LI["LlamaIndex 0.10\nRAG orchestration\nComponent: QueryEngine\nFile: app/rag/"]
+        LI["LlamaIndex 0.10\nRAG orchestration\nComponent: QueryEngine\nFile: app/services/rag/"]
         CH["ChromaDB 0.5\nLocal vector database\nComponent: OWASP KB\nData: data/chroma_db/"]
-        ST2["sentence-transformers\nCross-encoder reranker\nModel: ms-marco-MiniLM"]
-        BM["rank-bm25\nSparse retrieval\nComponent: BM25 index"]
     end
 
     subgraph LLM_LAYER["🦙 LLM Layer"]
-        OL["Ollama 0.3+\nLocal LLM runtime\nApple MPS / Metal GPU\nNo cloud needed"]
-        M1["codestral\nSecurity + Remediation agents\n~7B params, GGUF Q4"]
-        M2["qwen2.5-coder:7b\nCode Analysis + PR Summary\nFast inference, ~7B"]
-        M3["nomic-embed-text\n768-dim embeddings\nApple MPS accelerated"]
+        OL["Groq Cloud\nFast Llama-3 inference\n(Primary logic)"]
+        M1["Google Gemini\nFallback / General reasoning"]
+        M2["Ollama (Local)\nOffline runtime fallback"]
     end
 
     subgraph STATIC_LAYER["🔬 Static Analysis Layer"]
         BAN["Bandit 1.7\nPython OWASP security linting\nComponent: Security Agent input"]
         PYL["Pylint 3.2\nPython code quality\nComponent: Code Analysis input"]
         RAD["Radon 6.0\nCyclomatic complexity\nMaintainability index"]
-        SEM["Semgrep 1.77\nMulti-language OWASP rules\nPython + Java patterns"]
-        PMD["PMD (CLI)\nJava code analysis\n700+ built-in rules"]
+        SEM["Semgrep 1.77\nMulti-language OWASP rules\nPython + Java taint tracking"]
     end
 
     subgraph MONITOR_LAYER["📊 Monitoring Layer"]
