@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔍 AI Code Review & Security Analysis Agent
+# 🔍 Development of Smart Code Inspection Platform with Vulnerability Detection System Group 2
 
 ### A Production-Grade, Multi-Agent, RAG-Powered Platform for Automated Code Security and Quality Analysis
 
