@@ -53,8 +53,8 @@ def get_llm():
             model=settings.groq_primary_model,
             groq_api_key=settings.groq_api_key,
             temperature=0.1,
-            max_retries=0,
-            timeout=15.0,
+            max_retries=3,
+            timeout=30.0,
         )
 
     # Ollama local fallback
@@ -107,7 +107,7 @@ def get_fast_llm():
             model=settings.groq_fast_model,
             groq_api_key=settings.groq_api_key,
             temperature=0.1,
-            max_retries=0,
+            max_retries=3,
             timeout=15.0,
         )
 

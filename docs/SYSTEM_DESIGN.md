@@ -6,12 +6,12 @@ This document maps out the inputs, outputs, and responsibilities of the LangGrap
 
 ## 1. Code Analysis Agent
 
-- **Input:** Source Code + Language Context + Linter Output (Pylint/Radon/PMD)
+- **Input:** Source Code + Language Context + Linter Output (Pylint/Radon/Semgrep)
 - **Output:** `CodeAnalysisResult` (containing a list of `CodeSmell`s and a `ComplexityScore`)
 - **Responsibilities:** 
   - Structural review and static analysis.
   - Detect code smells, cyclomatic complexity issues, design anti-patterns, and bad practices.
-  - Uses `qwen2.5-coder:7b` for fast, logic-focused reasoning.
+  - Uses `Groq LPU` or `Gemini` for high-speed, logic-focused reasoning.
 - **Out of Scope:** It does not flag security vulnerabilities or rewrite code.
 
 ## 2. Security Vulnerability Agent
@@ -22,7 +22,7 @@ This document maps out the inputs, outputs, and responsibilities of the LangGrap
   - Detect OWASP Top 10 vulnerabilities (SQLi, XSS, CSRF, broken auth, hardcoded secrets, etc).
   - Ground its findings using ChromaDB RAG retrieval (e.g. citing CWE IDs and OWASP categories).
   - Determine exploitability confidence and severity.
-  - Uses `codestral` due to its superior security and reasoning capabilities.
+  - Uses powerful LLMs (`Groq Llama-3` or `Gemini Pro`) due to their superior security and reasoning capabilities.
 
 ## 3. Remediation Agent
 
@@ -55,23 +55,21 @@ flowchart TD
         L["Run Static Linters"]
     end
 
-    subgraph PARALLEL["Stage 1 — Discovery"]
-        direction LR
+    subgraph SEQ["Stage 1 & 2 — Sequential Analysis"]
         CA["Code Analysis Agent"]
         SV["Security Vulnerability Agent"]
-    end
-
-    subgraph SEQ["Stage 2 — Action & Summary"]
-        RA["Remediation Agent"]
+        SYNC["Sync Findings"]
+        RA["Remediation Agent (If Findings > 0)"]
         PR["PR Summary Agent"]
     end
 
     START --> PRE
     PRE --> CA
-    PRE --> SV
-    CA --> RA
-    SV --> RA
+    CA --> SV
+    SV --> SYNC
+    SYNC --> RA
     RA --> PR
+    SYNC -.->|"Clean Code Shortcut"| PR
     PR --> END(["Save to Redis"])
 ```
 

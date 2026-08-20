@@ -1,67 +1,77 @@
 """
 About this file: pr_summary.py
 Structure: Prompt execution logic combining quality and security findings into an executive PR overview and risk rating.
-Methods used: generate_pr_summary.
+Methods used: run_pr_summary.
+
+Architecture (Hybrid):
+ - The LLM only generates narrative text (executive summary, finding tables). It never touches code blocks.
+ - Python builds the GitHub-style diff blocks deterministically from the RemediationResult model.
+ - The two parts are stitched together before saving, guaranteeing perfect formatting.
 """
 
 import json
 import re
+import difflib
 import logfire
 from loguru import logger
 from langchain_core.prompts import ChatPromptTemplate
-from app.llm import get_fast_llm
+from app.llm import get_llm
 from app.models import PRSummaryResult, OverallRiskRating
 from app.agents.state import AgentState
 from app.tracing import traceable
 
-PROMPT = """You are a Senior Engineering Lead performing a final Pull Request review.
+# ── LLM Prompt (narrative only — NO code blocks asked for) ─────────────────
+PROMPT = """You are a Senior Staff Security Engineer performing a final Pull Request review.
 You have received the complete output of an automated AI code review pipeline.
-Your task is to compile ALL findings into a single, structured PR review summary.
+Your task is to compile ALL findings into a highly professional, structured PR review summary.
 
 Scoring Rules:
 - Start security_score at 100. Deduct: critical=-30, high=-15, medium=-7, low=-2 per finding.
 - Start quality_score at 100. Deduct per code smell: critical=-20, high=-10, medium=-5, low=-2.
 - composite_risk_score = round(0.6 * (100 - security_score) + 0.4 * (100 - quality_score))
 - overall_risk: "CRITICAL" if any critical vuln, "HIGH" if any high, "MEDIUM" if any medium, "LOW" if any low, else "CLEAN".
-- approved: true ONLY if overall_risk is "LOW" or "CLEAN" (zero critical/high findings).
+- approved: true ONLY if overall_risk is "LOW" or "CLEAN".
 
-markdown_review format:
-## 🤖 AI Code Review Report
-**Overall Risk:** [risk badge]
-**Security Score:** X/100 | **Quality Score:** X/100
+Write "markdown_review" using ONLY plain markdown text — NO code blocks, NO backticks, NO triple backticks of any kind.
+Use this structure:
+
+## 🤖 Enterprise AI Code Review Report
+**Overall Risk:** [risk badge] | **Security Score:** X/100 | **Quality Score:** X/100
+
+### 📋 Executive Summary
+[Professional 2-3 sentence summary for engineering leadership.]
 
 ### 🚨 Critical & High Findings
-[table or list of critical/high items]
+[Detailed list of critical/high items — title, severity badge, CWE if applicable, business impact.]
 
 ### ⚠️ Medium & Low Findings
-[table or list of medium/low items]
+[Detailed list of medium/low items — title, severity, description.]
 
-### ✅ Remediation Priority
-[numbered list, most urgent first]
-
-### 📊 Summary
-[2-3 sentence summary for a developer]
+### ✅ Remediation Priority Roadmap
+1. [Most urgent fix with file/line reference]
+2. [Second most urgent]
+...
 
 You MUST respond with ONLY a valid raw JSON object. No markdown, no code fences, no explanation outside the JSON.
-Use exactly this structure:
 {{
   "agent": "PRSummaryAgent",
   "overall_risk": "<string: CRITICAL, HIGH, MEDIUM, LOW, or CLEAN>",
-  "security_score": "<integer: 0-100>",
-  "quality_score": "<integer: 0-100>",
-  "composite_risk_score": "<integer: 0-100>",
-  "total_findings": "<integer: total number of issues found>",
-  "markdown_review": "<string: detailed markdown formatted review report>",
+  "security_score": <integer: 0-100>,
+  "quality_score": <integer: 0-100>,
+  "composite_risk_score": <integer: 0-100>,
+  "total_findings": <integer>,
+  "markdown_review": "<string: plain markdown narrative — NO backticks inside>",
   "remediation_priority_list": [
-    "<string: A one-sentence summary of the finding and its line number, ending with the severity>"
-    // IMPORTANT: If there are no findings, output an empty list [] instead.
+    "<string: one-sentence summary of finding + severity>"
   ],
   "approved": false
 }}
 
-IMPORTANT: "overall_risk" must be one of: "CRITICAL", "HIGH", "MEDIUM", "LOW", "CLEAN".
-IMPORTANT: All scores must be integers between 0 and 100.
-CRITICAL: You MUST include ALL fields in the root JSON object.
+IMPORTANT: All scores must be plain integers, not strings.
+CRITICAL: Do NOT include backticks, triple-backticks, or code fences anywhere in markdown_review.
+
+Original Source Code:
+{code}
 
 Code Analysis Result:
 {code_analysis_json}
@@ -69,8 +79,8 @@ Code Analysis Result:
 Security Analysis Result:
 {security_analysis_json}
 
-Remediation Summary:
-{remediation_summary}
+Remediation Data:
+{remediation_json}
 """
 
 
@@ -156,7 +166,7 @@ async def run_pr_summary(state: AgentState) -> dict:
     markdown comment, and remediation priority list.
 
     Returns:
-        dict with key "pr_summary_result" containing a PRSummaryResult object.
+        dict with key \"pr_summary_result\" containing a PRSummaryResult object.
     """
     logger.info(f"Running PR Summary Agent for session {state.get('session_id')}")
     print("[PR_SUMMARY] Starting...", flush=True)
@@ -176,13 +186,14 @@ async def run_pr_summary(state: AgentState) -> dict:
             return str(model)
 
     invoke_kwargs = {
+        "code": state.get("code", "No code provided."),
         "code_analysis_json": _safe_dump(code_result),
         "security_analysis_json": _safe_dump(sec_result),
-        "remediation_summary": rem_result.summary if rem_result else "No remediation data.",
+        "remediation_json": _safe_dump(rem_result),
     }
 
     # ── Build LLM chain ───────────────────────────────────────────────────────
-    llm = get_fast_llm()
+    llm = get_llm()
     prompt = ChatPromptTemplate.from_template(PROMPT)
     chain = prompt | llm
 
@@ -200,6 +211,7 @@ async def run_pr_summary(state: AgentState) -> dict:
                     else str(raw_response)
                 )
             data = _extract_json(raw_text)
+
             result = PRSummaryResult(**data)
             logger.info(
                 f"[PR_SUMMARY] OK (attempt {attempt + 1}). "
@@ -215,7 +227,7 @@ async def run_pr_summary(state: AgentState) -> dict:
                     **invoke_kwargs,
                     "code_analysis_json": (
                         invoke_kwargs["code_analysis_json"]
-                        + "\n\n[SYSTEM REMINDER: Respond with ONLY a valid JSON object.]"
+                        + "\n\n[SYSTEM REMINDER: Respond with ONLY a valid JSON object. No backticks inside values.]"
                     ),
                 }
             else:
@@ -226,6 +238,18 @@ async def run_pr_summary(state: AgentState) -> dict:
     )
 
     fallback = _compute_fallback_scores(state)
+    fallback_md = (
+        f"## ⚠️ PR Summary (Auto-Generated)\n\n"
+        f"The PR Summary Agent could not generate a full review. "
+        f"Scores have been computed directly from agent outputs.\n\n"
+        f"**Overall Risk:** {fallback['overall_risk']} | "
+        f"**Security Score:** {fallback['security_score']}/100 | "
+        f"**Quality Score:** {fallback['quality_score']}/100\n\n"
+        f"*Last error: {str(last_error)[:200]}*"
+    )
+    if diff_section:
+        fallback_md += "\n\n" + diff_section
+
     return {
         "pr_summary_result": PRSummaryResult(
             overall_risk=OverallRiskRating(fallback["overall_risk"]),
@@ -233,15 +257,7 @@ async def run_pr_summary(state: AgentState) -> dict:
             quality_score=fallback["quality_score"],
             composite_risk_score=fallback["composite_risk_score"],
             total_findings=fallback["total_findings"],
-            markdown_review=(
-                f"## ⚠️ PR Summary (Auto-Generated)\n\n"
-                f"The PR Summary Agent could not generate a full review. "
-                f"Scores have been computed directly from agent outputs.\n\n"
-                f"**Overall Risk:** {fallback['overall_risk']} | "
-                f"**Security Score:** {fallback['security_score']}/100 | "
-                f"**Quality Score:** {fallback['quality_score']}/100\n\n"
-                f"*Last error: {str(last_error)[:200]}*"
-            ),
+            markdown_review=fallback_md,
             remediation_priority_list=[],
             approved=fallback["approved"],
         )
